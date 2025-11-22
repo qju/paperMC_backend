@@ -19,6 +19,7 @@ func main() {
 	mux.HandleFunc("GET /status", mcHandler.GetStatus)
 	mux.HandleFunc("POST /command", mcHandler.SendCommand)
 	mux.HandleFunc("POST /start", mcHandler.Start)
+	mux.HandleFunc("POST /stop", mcHandler.Stop)
 
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
 

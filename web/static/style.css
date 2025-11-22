@@ -1,0 +1,17 @@
+#status-box {
+    padding: 20px;
+    border: 1px solid #ccc;
+    margin-bottom: 20px;
+}
+
+#current-status {
+    font-weight: bold;
+}
+
+#current-status.running {
+    color: green;
+}
+
+#current-status.stopped {
+    color: red;
+}
