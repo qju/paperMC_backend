@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PaperMC Manager</title>
+</head>
+<body>
+    <h1>PaperMC Manager</h1>
+
+    <div id="status box" style="padding: 20px; border: 1px solid #ccc; margin-bottom: 20px;">
+        Status: <span id="current-status" style="font-weight: bold;">Unknown</span>
+    </div>
+    <button id="btn-start" onclick="startServer()">Start Server</button>
+    <button id="btn-stop" onclick="stopServer()">Stop Server</button>
+
+    <hr>
+    <input type="text" id="cmd-input" placeholder="e.g. help">
+    <button onclick="sendCommmand()">Send Command</button>
+
+    <script>
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    // data.status comes from your GO struct "status"
+                    const statusSpan = document.getElementById('current-status');
+                    statusSpan.innerText = data.status;
+
+                    // Visual Polish: Change color based on status
+                    if (data.status === "Running") {
+                        statusSpan.style.color = 'green';
+                    } else {
+                        statusSpan.style.color = 'red';
+                    }
+                })
+                .catch(err => {
+                    console.error("API Error: ", err);
+                    document.getElementById("current-status").innerText = "Offline (Backend down)";
+                });
+        }
+
+        setInterval(updateStatus, 1000);
+        updateStatus();
+        // Script goes here !
+    </script>
+</body>
+</html>
