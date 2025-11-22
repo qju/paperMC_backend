@@ -67,8 +67,7 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 	if err := h.mc.Stop(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	go h.mc.StreamLogs()
-	response := StatusResponse{Status: "200 Server started"}
+	response := StatusResponse{Status: "200 Server stopped"}
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
