@@ -1,3 +1,7 @@
+#main-container {
+    display: flexbox;
+    width: 700px;
+}
 #status-box {
     padding: 20px;
     border: 1px solid #ccc;

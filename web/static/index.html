@@ -5,20 +5,21 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>PaperMC Manager V1</h1>
+    <div id="main-container">
+        <h1>PaperMC Manager V1</h1>
 
-    <div id="status-box">
-        Status: <span id="current-status">Unknown</span>
+        <div id="status-box">
+            Status: <span id="current-status">Unknown</span>
+        </div>
+        <button id="btn-start" onclick="startServer()">Start Server</button>
+        <button id="btn-stop" onclick="stopServer()">Stop Server</button>
+
+        <hr>
+        <input type="text" id="cmd-input" placeholder="e.g. help">
+        <button onclick="sendCommmand()">Send Command</button>
+        <h3>Server Logs</h3>
+        <div id="log-container"></div>
     </div>
-    <button id="btn-start" onclick="startServer()">Start Server</button>
-    <button id="btn-stop" onclick="stopServer()">Stop Server</button>
-
-    <hr>
-    <input type="text" id="cmd-input" placeholder="e.g. help">
-    <button onclick="sendCommmand()">Send Command</button>
-    <h3>Server Logs</h3>
-    <div id="log-container"></div>
-
     <script src="script.js"></script>
 
 </body>
