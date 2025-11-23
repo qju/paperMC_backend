@@ -36,6 +36,7 @@ type Server struct {
 	JarPath string
 	RAM     string
 	Args    []string
+	LogChan chan string
 
 	// Prive fields
 	cmd    *exec.Cmd
@@ -96,6 +97,12 @@ func (s *Server) StreamLogs() {
 
 	for scanner.Scan() {
 		fmt.Printf("[MC] %s\n", scanner.Text())
+		select {
+		case s.LogChan <- "[MC] " + scanner.Text():
+			// message sent
+		default:
+			// No one listening, drop message to prevent listenning
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Error reading log %v\n", err)
@@ -118,21 +125,22 @@ func (s *Server) SendCommand(cmd string) error {
 	return err
 }
 
+func (s *Server) GetStatus() Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.status
+}
+
 func NewServer(workDir string, jarPath string, ram string) *Server {
 	return &Server{
 		WorkDir: workDir,
 		JarPath: jarPath,
 		RAM:     ram,
+		LogChan: make(chan string),
 		status:  StatusStopped,
 
 		Args: []string{},
 	}
-}
-
-func (s *Server) GetStatus() Status {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.status
 }
 
 //["java", "-Xms9216M", "-Xmx9216M", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-XX:G1HeapRegionSize=8M", "-XX:G1HeapWastePercent=5", "-XX:G1MaxNewSizePercent=40", "-XX:G1MixedGCCountTarget=4", "-XX:G1MixedGCLiveThresholdPercent=90", "-XX:G1NewSizePercent=30", "-XX:G1RSetUpdatingPauseTimePercent=5", "-XX:G1ReservePercent=20", "-XX:InitiatingHeapOccupancyPercent=15", "-XX:MaxGCPauseMillis=200", "-XX:MaxTenuringThreshold=1", "-XX:SurvivorRatio=32", "-Dusing.aikars.flags=https://mcflags.emc.gs", "-Daikars.new.flags=true"]

@@ -42,6 +42,28 @@ function sendCommmand() {
     });
 }
 
+const eventSources = new EventSource("/logs");
+const logContainer = document.getElementById("log-container");
+//Listening for message
+eventSources.onmessage = function(event) {
+    console.log("New Log: ", event.data)
+    
+    const newLine = document.createElement("div");
+    
+    newLine.innerText = event.data
+
+    if (event.data.includes("ERROR") || event.data.includes("Exception")) {
+        newLine.style.color = "red";
+    }
+
+    logContainer.appendChild(newLine);
+
+    logContainer.scrollTop = logContainer.scrollHeight;
+};
+
+eventSources.onerror = function() {
+    eventSources.close();
+};
 
 setInterval(updateStatus, 5000);
 updateStatus();

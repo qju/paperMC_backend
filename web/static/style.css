@@ -4,6 +4,16 @@
     margin-bottom: 20px;
 }
 
+#log-container {
+    background-color: #1e1e1e;
+    color: #00ff00;
+    font-family: monospace;
+    height: 300px;
+    overflow-y: scroll;
+    padding: 10px;
+    border: 1px solid #333;
+}
+
 #current-status {
     font-weight: bold;
 }

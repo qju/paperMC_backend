@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"paperMC_backend/internal/minecraft"
 )
@@ -55,6 +56,7 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.mc.Start(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	go h.mc.StreamLogs()
 	response := StatusResponse{Status: "200 Server started"}
@@ -66,8 +68,30 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.mc.Stop(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	response := StatusResponse{Status: "200 Server stopped"}
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	for {
+		if !ok {
+			return
+		}
+		select {
+		case response := <-h.mc.LogChan:
+			fmt.Fprintf(w, "data: %s\n\n", response)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
 }

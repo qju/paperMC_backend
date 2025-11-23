@@ -17,6 +17,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", mcHandler.GetStatus)
+	mux.HandleFunc("GET /logs", mcHandler.HandleLogs)
 	mux.HandleFunc("POST /command", mcHandler.SendCommand)
 	mux.HandleFunc("POST /start", mcHandler.Start)
 	mux.HandleFunc("POST /stop", mcHandler.Stop)
