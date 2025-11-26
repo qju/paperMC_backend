@@ -1,26 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PaperMC Manager V1</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaperMC Dashboard</title>
+    <!-- Import VT323 for that pixel/terminal look -->
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="main-container">
-        <h1>PaperMC Manager V1</h1>
-
-        <div id="status-box">
-            Status: <span id="current-status">Unknown</span>
+    <div id="container">
+        <header>
+            <h1>PaperMC Manager</h1>
+            <div id="status-badge" class="status-badge">Unknown</div>
+        </header>
+        <div class="mc-panel">
+            <div class="controls">
+                <button class="mc-btn btn-start" onclick="startServer()">Start Server</button>
+                <button class="mc-btn btn-stop" onclick="stopServer()">Stop Server</button>
+            </div>
         </div>
-        <button id="btn-start" onclick="startServer()">Start Server</button>
-        <button id="btn-stop" onclick="stopServer()">Stop Server</button>
 
-        <hr>
-        <input type="text" id="cmd-input" placeholder="e.g. help">
-        <button onclick="sendCommmand()">Send Command</button>
-        <h3>Server Logs</h3>
-        <div id="log-container"></div>
+        <div class="mc-panel" style="padding:0; border: 4px solid #000; background:none;">
+            <div class="console-header">
+                <span>>_ Server Console</span>
+            </div>
+            <div id="log-container">
+                <div class="log-entry" style="color: #555;">[System] Console initialized. Ready for input.</div>
+            </div>
+            <div class="input-area">
+                <span style="color:#aaa; padding: 5px;">/</span>
+                <input type="text" id="cmd-input" placeholder="Type command..." onkeydown="handleEnter(event)">
+                <button class="mc-btn btn-send" onclick="sendCommand()">Send</button>
+            </div>
+        </div>
     </div>
-    <script src="script.js"></script>
 
+    <script src="script.js"></script>
 </body>
 </html>

@@ -1,18 +1,18 @@
+const cmdInput = document.getElementById('cmd-input');
+const statusBadge = document.getElementById('status-badge');
+
 function updateStatus() {
     fetch('/status')
         .then(response => response.json())
         .then(data => {
             // data.status comes from your GO struct "status"
-            const statusSpan = document.getElementById('current-status');
-            statusSpan.innerText = data.status;
-
+            statusBadge.innerText = data.status;
+            statusBadge.className = "status-badge"
             // Visual Polish: Change class based on status
             if (data.status === "Running") {
-                statusSpan.classList.remove('stopped');
-                statusSpan.classList.add('running');
+                statusBadge.classList.add('running');
             } else {
-                statusSpan.classList.remove('running');
-                statusSpan.classList.add('stopped');
+                statusBadge.classList.add('stopped');
             }
         })
         .catch(err => {
@@ -31,14 +31,20 @@ function stopServer() {
         .then(updateStatus);
 }
 
-function sendCommmand() {
-    const cmd = document.getElementById('cmd-input').value;
+function sendCommand() {
+    const cmd = cmdInput.value;
+    if (!cmd) return;
+
     fetch('/command', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({command: cmd})
+    }).then(resp => {
+        if(resp.ok) {
+            cmdInput.value = ''; 
+        } else {
+            addLocalLog("System: Command failed to send.", true);
+        }
     });
 }
 
@@ -64,6 +70,24 @@ eventSources.onmessage = function(event) {
 eventSources.onerror = function() {
     eventSources.close();
 };
+
+    // --- Helpers ---
+
+function handleEnter(event) {
+    if (event.key === 'Enter') {
+        sendCommand();
+    }
+}
+
+function addLocalLog(msg, isError = false) {
+    const newLine = document.createElement("div");
+    newLine.className = "log-entry";
+    newLine.innerText = msg;
+    if (isError) newLine.classList.add("log-error");
+    
+    logContainer.appendChild(newLine);
+    scrollToBottom();
+}
 
 setInterval(updateStatus, 5000);
 updateStatus();
