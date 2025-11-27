@@ -7,12 +7,15 @@ import (
 	"os"
 	"os/signal"
 	"paperMC_backend/internal/api"
+	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/minecraft"
+	"syscall"
 )
 
 func main() {
 	// Keeping pointer
-	mcServer := minecraft.NewServer("./paperMC", "server.jar", "2048M")
+	cfg := config.Load()
+	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
 	mcHandler := api.NewServerHandler(mcServer)
 
 	mux := http.NewServeMux()
@@ -21,19 +24,19 @@ func main() {
 	mux.HandleFunc("POST /command", mcHandler.SendCommand)
 	mux.HandleFunc("POST /start", mcHandler.Start)
 	mux.HandleFunc("POST /stop", mcHandler.Stop)
-
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
 
+	protectedMux := mcHandler.BasicAuth(mux, cfg.AdminUser, cfg.AdminPass)
 	go func() {
-		if err := http.ListenAndServe(":8080", mux); err != nil {
+		if err := http.ListenAndServe(":"+cfg.Port, protectedMux); err != nil {
 			log.Fatalf("CRITICAL ERROR, %v", err)
 		}
 	}()
 
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	sig := <-c
-	fmt.Printf("Reciving Signal [%v]. Shutting down...\n", sig)
+	fmt.Printf("Receiving Signal [%v]. Shutting down...\n", sig)
 	if err := mcServer.Stop(); err != nil {
 		log.Printf("Error stopping the server: %v", err)
 	}

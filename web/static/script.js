@@ -17,7 +17,8 @@ function updateStatus() {
         })
         .catch(err => {
             console.error("API Error: ", err);
-            document.getElementById("current-status").innerText = "Offline (Backend down)";
+            statusBadge.classList.add('stopped');
+            statusBadge.innerText = "Offline (Backend down)"
         });
 }
 

@@ -11,6 +11,21 @@ type Handler struct {
 	mc *minecraft.Server
 }
 
+func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+
+		if !ok || u != user || p != pass {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+
+}
+
 func NewServerHandler(mcServer *minecraft.Server) *Handler {
 	return &Handler{
 		mc: mcServer,
