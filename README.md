@@ -94,6 +94,26 @@ This will start the backend server and mount the `paperMC` directory from your h
 
 A simple web interface is available at the root URL (`/`) to control the server.
 
+## Project status
+
+[x] Core Process Manager
+
+[x] Log Streaming (SSE)
+
+[x] Smart Whitelister + model popup
+
+[ ] Modal Aesthetics Upgrade
+
+[ ] Config Editor
+
+[ ] Auto-Updater
+
+[ ] Backup System
+
+[ ] Secure Auth
+
+[ ] Smart Flag Manager
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

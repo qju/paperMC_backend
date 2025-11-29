@@ -49,6 +49,42 @@ function sendCommand() {
     });
 }
 
+function openModal() {
+    document.getElementById("modal-overlay").classList.remove('hidden')
+    document.getElementById("modal-input").focus() //clear it
+}
+
+function closeModal() {
+    document.getElementById("modal-overlay").classList.add('hidden')
+    document.getElementById("modal-input").value = '' //clear it
+}
+function whiteList() {
+    const wlInput = document.getElementById('modal-input');
+    const cmd = wlInput.value;
+
+    if (!cmd) return;
+
+    fetch('/whitelist_add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({command: cmd})
+    }).then(resp => {
+        if(resp.ok) {
+            wlInput.value = ''; 
+            addLocalLog(`[System] Whitelist request sent for: ${cmd}`);
+        } else {
+            addLocalLog("System: Command failed to send.", true);
+        }
+    });
+}
+
+// option close modal on "Escape" key
+document.addEventListener('keydown', function(event) {
+    if (event.key === "Escape") {
+        closeModal()
+    }
+});
+
 const eventSources = new EventSource("/logs");
 const logContainer = document.getElementById("log-container");
 //Listening for message
@@ -78,6 +114,9 @@ function handleEnter(event) {
     if (event.key === 'Enter') {
         sendCommand();
     }
+}
+function scrollToBottom() {
+    logContainer.scrollTop = logContainer.scrollHeight;
 }
 
 function addLocalLog(msg, isError = false) {

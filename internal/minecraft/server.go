@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 )
 
@@ -16,6 +17,8 @@ const (
 	StatusStarting               //1
 	StatusRunning                //2
 )
+
+const FloodgatePrefix = "."
 
 func (s Status) String() string {
 	switch s {
@@ -38,7 +41,7 @@ type Server struct {
 	Args    []string
 	LogChan chan string
 
-	// Prive fields
+	// Private fields
 	cmd    *exec.Cmd
 	mu     sync.Mutex
 	status Status
@@ -96,16 +99,24 @@ func (s *Server) StreamLogs() {
 	scanner := bufio.NewScanner(s.stdout)
 
 	for scanner.Scan() {
-		fmt.Printf("[MC] %s\n", scanner.Text())
-		select {
-		case s.LogChan <- "[MC] " + scanner.Text():
-			// message sent
-		default:
-			// No one listening, drop message to prevent listenning
-		}
+		s.Broadcast("[MC] " + scanner.Text())
 	}
+
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Error reading log %v\n", err)
+	}
+}
+
+func (s *Server) Broadcast(msg string) {
+	// Sent msg to os output
+	fmt.Println(msg)
+
+	// Sent msg to frontend
+	select {
+	case s.LogChan <- msg:
+		// Send successfully
+	default:
+		// No browser connected, drop the msg
 	}
 }
 
@@ -141,6 +152,31 @@ func NewServer(workDir string, jarPath string, ram string) *Server {
 
 		Args: []string{},
 	}
+}
+
+func (s *Server) WhiteListUser(username string) error {
+	uuid, err := GetUUID(username)
+
+	if err == nil {
+		s.Broadcast(fmt.Sprintf("[System] Whitelisting Java UUID: %s for %s\n", uuid, username))
+		return s.SendCommand("whitelist add " + username)
+	}
+
+	xuid, err := GetXUID(username)
+	if err == nil {
+		s.Broadcast(fmt.Sprintf("[System] Whitelisting Xbox XUID: %s for %s\n", xuid, username))
+
+		finalName := username
+		if !strings.HasPrefix(username, FloodgatePrefix) {
+			finalName = FloodgatePrefix + username
+		}
+		return s.SendCommand("fwhitelist add " + finalName)
+	}
+
+	s.Broadcast(fmt.Sprintf("[ERROR] User %s not found on Mojang or Xbox live: %s", username, err))
+	return fmt.Errorf("user not found on Mojang or Xbox Live")
+	// Failure: Neither API found a user
+
 }
 
 //["java", "-Xms9216M", "-Xmx9216M", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-XX:G1HeapRegionSize=8M", "-XX:G1HeapWastePercent=5", "-XX:G1MaxNewSizePercent=40", "-XX:G1MixedGCCountTarget=4", "-XX:G1MixedGCLiveThresholdPercent=90", "-XX:G1NewSizePercent=30", "-XX:G1RSetUpdatingPauseTimePercent=5", "-XX:G1ReservePercent=20", "-XX:InitiatingHeapOccupancyPercent=15", "-XX:MaxGCPauseMillis=200", "-XX:MaxTenuringThreshold=1", "-XX:SurvivorRatio=32", "-Dusing.aikars.flags=https://mcflags.emc.gs", "-Daikars.new.flags=true"]

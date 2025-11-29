@@ -46,6 +46,26 @@ func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) Whitelisting(w http.ResponseWriter, r *http.Request) {
+	var req = CommandRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Command == "" {
+		http.Error(w, "User name cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.mc.WhiteListUser(req.Command); err != nil {
+		http.Error(w, "Error sending Command", http.StatusBadRequest)
+		return
+	}
+	response := StatusResponse{Status: "200 OK JSON"}
+	w.Header().Set("Content-type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 	var req = CommandRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

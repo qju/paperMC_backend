@@ -22,6 +22,7 @@ func main() {
 	mux.HandleFunc("GET /status", mcHandler.GetStatus)
 	mux.HandleFunc("GET /logs", mcHandler.HandleLogs)
 	mux.HandleFunc("POST /command", mcHandler.SendCommand)
+	mux.HandleFunc("POST /whitelist_add", mcHandler.Whitelisting)
 	mux.HandleFunc("POST /start", mcHandler.Start)
 	mux.HandleFunc("POST /stop", mcHandler.Stop)
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))

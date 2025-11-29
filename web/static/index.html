@@ -15,24 +15,47 @@
             <h1>PaperMC Manager</h1>
             <div id="status-badge" class="status-badge"></div>
         </header>
-        <div class="mc-panel">
-            <div class="controls">
-                <button class="mc-btn btn-start" onclick="startServer()">Start Server</button>
-                <button class="mc-btn btn-stop" onclick="stopServer()">Stop Server</button>
-            </div>
-        </div>
+        <div class="mc-row">
+            <div class="mc-panel-left mc-panel">
+                <div class="console-header">
+                    <span>>_ Menu</span>
+                </div>
+                <div style="padding: 10px;">
+                    <button class="mc-btn mc-btn-menu" onclick="openModal()">Menage Whitelist</button>
+                </div>
+            </div> 
 
-        <div class="mc-panel" style="padding:0; border: 4px solid #000; background:none;">
-            <div class="console-header">
-                <span>>_ Server Console</span>
+            <div id="modal-overlay" class="hidden">
+                <div class="modal-box">
+                    <div class="modal-title">Add Player to Whitelist</div>
+
+                    <label style="color: #333">Username / GamerTag</label>
+                    <input type="text" id="modal-input" placeholder="e.g. Notch"
+                        style="width: 100%; padding: 8px; font-family: inherit; font-size: 1.2rem;">
+                    
+                    <div class="modal-action">
+                        <button class="mc-btn" style="background-color: #666;" onclick="closeModal()">Cancel</button>
+                        <button class="mc-btn btn-start" onclick="whitelist()">Confirm</button>
+                    </div>    
+                </div>
             </div>
-            <div id="log-container">
-                <div class="log-entry" style="color: #555;">[System] Console initialized. Ready for input.</div>
-            </div>
-            <div class="input-area">
-                <span style="color:#aaa; padding: 5px;">/</span>
-                <input type="text" id="cmd-input" placeholder="Type command..." onkeydown="handleEnter(event)">
-                <button class="mc-btn btn-send" onclick="sendCommand()">Send</button>
+            <div class="mc-panel-right mc-panel"> 
+                <div class="controls">
+                    <button class="mc-btn btn-start" onclick="startServer()">Start Server</button>
+                    <button class="mc-btn btn-stop" onclick="stopServer()">Stop Server</button>
+                </div>
+                <div class="console-header">
+                    <span>>_ Server Console</span>
+                </div>
+
+                <div id="log-container">
+                    <div class="log-entry" style="color: #555;">[System] Console initialized. Ready for input.</div>
+                </div>
+                <div class="input-area">
+                    <span style="color:#aaa; padding: 5px;">/</span>
+                    <input type="text" id="cmd-input" placeholder="Type command..." onkeydown="handleEnter(event)">
+                    <button class="mc-btn btn-send" onclick="sendCommand()">Send</button>
+                </div>
             </div>
         </div>
     </div>
