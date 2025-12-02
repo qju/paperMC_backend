@@ -1,2 +1,6 @@
 paperMC/
 .vscode/
+
+server.properties
+*.csv
+*.txt
