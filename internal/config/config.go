@@ -4,6 +4,7 @@ import (
 	"os"
 )
 
+// Config holds the configuration values for the server.
 type Config struct {
 	Port    string
 	WorkDir string
@@ -14,6 +15,8 @@ type Config struct {
 	AdminPass string
 }
 
+// Load reads configuration from environment variables and returns a Config struct.
+// It sets default values if the environment variables are not present, except for ADMIN_PASS which is required.
 func Load() *Config {
 	return &Config{
 		Port:      getEnv("PORT", "8080"),
@@ -25,6 +28,9 @@ func Load() *Config {
 	}
 }
 
+// getEnv retrieves the value of the environment variable named by the key.
+// If the variable is present, the value (which may be empty) is returned.
+// Otherwise, the fallback value is returned.
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -32,6 +38,8 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+// getEnvNoFallback retrieves the value of the environment variable named by the key.
+// It panics if the variable is not present.
 func getEnvNoFallback(key string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value

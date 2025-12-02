@@ -16,7 +16,10 @@ func main() {
 	// Keeping pointer
 	cfg := config.Load()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
-	mcHandler := api.NewServerHandler(mcServer)
+
+	// Create the wrapper that satisfies ServerController interface
+	mcWrapper := &api.ServerWrapper{Server: mcServer}
+	mcHandler := api.NewServerHandler(mcWrapper)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", mcHandler.GetStatus)

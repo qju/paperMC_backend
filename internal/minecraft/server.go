@@ -10,14 +10,16 @@ import (
 	"sync"
 )
 
+// Status represents the current state of the Minecraft server.
 type Status int
 
 const (
-	StatusStopped  Status = iota //0
-	StatusStarting               //1
-	StatusRunning                //2
+	StatusStopped  Status = iota // 0
+	StatusStarting               // 1
+	StatusRunning                // 2
 )
 
+// FloodgatePrefix is the prefix used for Bedrock players connected via Floodgate.
 const FloodgatePrefix = "."
 
 func (s Status) String() string {
@@ -33,6 +35,7 @@ func (s Status) String() string {
 	}
 }
 
+// Server controls the Minecraft server process.
 type Server struct {
 	// Public fields
 	WorkDir string
@@ -49,6 +52,21 @@ type Server struct {
 	stdout io.ReadCloser
 }
 
+// NewServer creates a new Server instance.
+func NewServer(workDir string, jarPath string, ram string) *Server {
+	return &Server{
+		WorkDir: workDir,
+		JarPath: jarPath,
+		RAM:     ram,
+		LogChan: make(chan string),
+		status:  StatusStopped,
+
+		Args: []string{},
+	}
+}
+
+// Start launches the Minecraft server process.
+// It returns an error if the server is already running.
 func (s *Server) Start() error {
 	// Try Lock the server Mutex immediately
 	s.mu.Lock()
@@ -60,17 +78,17 @@ func (s *Server) Start() error {
 	s.cmd = exec.Command("java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarPath, "nogui")
 	s.cmd.Dir = s.WorkDir
 
-	pipe_in, err_in := s.cmd.StdinPipe()
-	if err_in != nil {
-		return err_in
+	pipeIn, errIn := s.cmd.StdinPipe()
+	if errIn != nil {
+		return errIn
 	}
-	s.stdin = pipe_in
+	s.stdin = pipeIn
 
-	pipe_out, err_out := s.cmd.StdoutPipe()
-	if err_out != nil {
-		return err_out
+	pipeOut, errOut := s.cmd.StdoutPipe()
+	if errOut != nil {
+		return errOut
 	}
-	s.stdout = pipe_out
+	s.stdout = pipeOut
 
 	if err := s.cmd.Start(); err != nil {
 		return err
@@ -79,6 +97,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// Stop sends the "stop" command to the server and waits for it to exit.
 func (s *Server) Stop() error {
 	if s.GetStatus() == StatusStopped {
 		return errors.New("server already stopped")
@@ -95,6 +114,8 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// StreamLogs reads the server's stdout and broadcasts it to LogChan.
+// It runs until the stdout pipe is closed.
 func (s *Server) StreamLogs() {
 	scanner := bufio.NewScanner(s.stdout)
 
@@ -107,6 +128,7 @@ func (s *Server) StreamLogs() {
 	}
 }
 
+// Broadcast sends a message to stdout and the LogChan if there is a listener.
 func (s *Server) Broadcast(msg string) {
 	// Sent msg to os output
 	fmt.Println(msg)
@@ -120,6 +142,7 @@ func (s *Server) Broadcast(msg string) {
 	}
 }
 
+// SendCommand writes a command to the server's stdin.
 func (s *Server) SendCommand(cmd string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -136,24 +159,15 @@ func (s *Server) SendCommand(cmd string) error {
 	return err
 }
 
+// GetStatus returns the current status of the server.
 func (s *Server) GetStatus() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.status
 }
 
-func NewServer(workDir string, jarPath string, ram string) *Server {
-	return &Server{
-		WorkDir: workDir,
-		JarPath: jarPath,
-		RAM:     ram,
-		LogChan: make(chan string),
-		status:  StatusStopped,
-
-		Args: []string{},
-	}
-}
-
+// WhiteListUser adds a user to the whitelist.
+// It attempts to resolve the user as a Java Edition player first, then as a Bedrock player via Geyser.
 func (s *Server) WhiteListUser(username string) error {
 	uuid, err := GetUUID(username)
 
@@ -175,8 +189,4 @@ func (s *Server) WhiteListUser(username string) error {
 
 	s.Broadcast(fmt.Sprintf("[ERROR] User %s not found on Mojang or Xbox live: %s", username, err))
 	return fmt.Errorf("user not found on Mojang or Xbox Live")
-	// Failure: Neither API found a user
-
 }
-
-//["java", "-Xms9216M", "-Xmx9216M", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-XX:G1HeapRegionSize=8M", "-XX:G1HeapWastePercent=5", "-XX:G1MaxNewSizePercent=40", "-XX:G1MixedGCCountTarget=4", "-XX:G1MixedGCLiveThresholdPercent=90", "-XX:G1NewSizePercent=30", "-XX:G1RSetUpdatingPauseTimePercent=5", "-XX:G1ReservePercent=20", "-XX:InitiatingHeapOccupancyPercent=15", "-XX:MaxGCPauseMillis=200", "-XX:MaxTenuringThreshold=1", "-XX:SurvivorRatio=32", "-Dusing.aikars.flags=https://mcflags.emc.gs", "-Daikars.new.flags=true"]
