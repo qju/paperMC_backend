@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/scanner"
 )
 
 const fileName string = "server.properties"
 
+// LoadProperties reads the server.properties file from the given path
+// and returns a map of property keys to values.
 func LoadProperties(path string) (map[string]string, error) {
 	fullPath := filepath.Join(path, fileName)
 	fi, err := os.Open(fullPath)
@@ -28,15 +29,15 @@ func LoadProperties(path string) (map[string]string, error) {
 	for scanner.Scan() {
 		// Save the read line and clean it
 		line := scanner.Text()
-		clean_line := strings.TrimSpace(line)
+		cleanLine := strings.TrimSpace(line)
 
 		// check if comment or empty string, if so continue
-		if clean_line == "" || strings.HasPrefix(clean_line, "#") {
+		if cleanLine == "" || strings.HasPrefix(cleanLine, "#") {
 			continue
 		}
 
 		// split line in to property and value
-		parts := strings.SplitN(clean_line, "=", 2)
+		parts := strings.SplitN(cleanLine, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
@@ -49,6 +50,8 @@ func LoadProperties(path string) (map[string]string, error) {
 	return props, nil
 }
 
+// SaveProperties overwrites the server.properties file with the given properties.
+// It does not preserve comments or formatting of the original file.
 func SaveProperties(path string, props map[string]string) error {
 
 	fullPath := filepath.Join(path, fileName)
@@ -78,7 +81,8 @@ func SaveProperties(path string, props map[string]string) error {
 	return nil
 }
 
-
+// SaveProperties2 updates the server.properties file with the given changes.
+// It preserves existing comments and structure, appending new properties at the end.
 func SaveProperties2(path string, changes map[string]string) error {
 	fullPath := filepath.Join(path, fileName)
 
@@ -91,7 +95,6 @@ func SaveProperties2(path string, changes map[string]string) error {
 			return saveNewFile(fullPath, changes)
 		}
 		return err
-	
 	}
 
 	var output bytes.Buffer
@@ -102,30 +105,56 @@ func SaveProperties2(path string, changes map[string]string) error {
 	scanner := bufio.NewScanner(bytes.NewReader(input))
 	for scanner.Scan() {
 		line := scanner.Text()
-		clean_line := strings.TrimSpace(line)
-		if clean_line == "" || strings.HasPrefix(clean_line, "#") {
+		cleanLine := strings.TrimSpace(line)
+		if cleanLine == "" || strings.HasPrefix(cleanLine, "#") {
 			output.WriteString(line + "\n")
 			continue
 		}
 
 		// split line in to property and value
-		parts := strings.SplitN(clean_line, "=", 2)
+		parts := strings.SplitN(cleanLine, "=", 2)
 
 		if len(parts) == 2 {
 			key := parts[0]
 			if newValue, exists := changes[key]; exists {
 				output.WriteString(fmt.Sprintf("%s=%s\n", key, newValue))
+				processedKeys[key] = true
+			} else {
+				output.WriteString(line + "\n")
+			}
+		} else {
 			output.WriteString(line + "\n")
-			continue
 		}
-		key := parts[0]
-		value := parts[1]
+	}
 
-		processedKeys[key] = true
+	// Append new keys that were not in the file
+	for k, v := range changes {
+		if !processedKeys[k] {
+			output.WriteString(fmt.Sprintf("%s=%s\n", k, v))
+		}
+	}
+
+	return os.WriteFile(fullPath, output.Bytes(), 0644)
 }
 
-func saveNewFile(fullPath string, props map[string]string) error{
-	// ... Your original simple sort & write logic goes here ...
-	// Or just simple loop if you
+func saveNewFile(fullPath string, props map[string]string) error {
+	file, err := os.Create(fullPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		line := fmt.Sprintf("%s=%s\n", k, props[k])
+		if _, err := file.WriteString(line); err != nil {
+			return err
+		}
+	}
 	return nil
 }
