@@ -21,10 +21,13 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", mcHandler.GetStatus)
 	mux.HandleFunc("GET /logs", mcHandler.HandleLogs)
+	mux.HandleFunc("GET /config", mcHandler.GetConfig)
+
 	mux.HandleFunc("POST /command", mcHandler.SendCommand)
 	mux.HandleFunc("POST /whitelist_add", mcHandler.Whitelisting)
 	mux.HandleFunc("POST /start", mcHandler.Start)
 	mux.HandleFunc("POST /stop", mcHandler.Stop)
+	mux.HandleFunc("POST /config", mcHandler.PostConfig)
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
 
 	protectedMux := mcHandler.BasicAuth(mux, cfg.AdminUser, cfg.AdminPass)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/minecraft"
 )
 
@@ -129,4 +130,29 @@ func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	config, err := config.LoadProperties(h.mc.WorkDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func (h *Handler) PostConfig(w http.ResponseWriter, r *http.Request) {
+	var data map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if err := config.SaveProperties(h.mc.WorkDir, data); err != nil {
+		http.Error(w, "Failed to save config"+err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(StatusResponse{Status: "Config Saved"})
 }
