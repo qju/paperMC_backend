@@ -49,9 +49,13 @@ function sendCommand() {
     });
 }
 
-function openModal() {
+function openModalWhitelist() {
     document.getElementById("modal-overlay").classList.remove('hidden')
     document.getElementById("modal-input").focus() //clear it
+}
+
+function openModalConfig() {
+    document.getElementById("config-modal-overlay").classList.remove('hidden')
 }
 
 function closeModal() {
@@ -77,11 +81,86 @@ function whiteList() {
         }
     });
 }
+function openModalConfig() {
+    document.getElementById("config-modal-overlay").classList.remove('hidden');
+    loadConfigData(); // Trigger the fetch
+}
+function closeModalConfig() {
+    document.getElementById("config-modal-overlay").classList.add('hidden')
+}
+
+function loadConfigData() {
+    const container = document.getElementById('config-container');
+    container.innerHTML = '<div style="text-align:center;">Loading...</div>';
+
+    fetch('/config')
+        .then(res => res.json())
+        .then(data => {
+            container.innerHTML = ''; // Clear loading text
+            
+            // Loop through map keys
+            // Object.keys(data).sort() ensures we display them alphabetically
+            Object.keys(data).sort().forEach(key => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.justifyContent = 'space-between';
+                row.style.alignItems = 'center';
+                
+                const label = document.createElement('label');
+                label.innerText = key;
+                label.style.color = '#333';
+                label.style.fontFamily = 'monospace';
+                label.style.fontSize = "1rem";
+                label.style.width = "100%" 
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = data[key];
+                
+                // FIX: Add 'modal-input' to get the CSS styling!
+                input.className = 'config-input modal-input'; 
+                input.dataset.key = key;
+                
+                // REMOVED: All the input.style lines. 
+                // Let CSS handle the look.
+
+                row.appendChild(label);
+                row.appendChild(input);
+                container.appendChild(row);
+            });
+        })
+        .catch(err => {
+            container.innerHTML = `<div style="color:red">Error loading config: ${err}</div>`;
+        });
+}
+
+function saveConfig() {
+    const inputs = document.querySelectorAll('.config-input');
+    const updates = {};
+
+    inputs.forEach(input => {
+        updates[input.dataset.key] = input.value;
+    });
+
+    fetch('/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+    }).then(resp => {
+        if (resp.ok) {
+            addLocalLog("[System] Config saved successfully.");
+            closeModalConfig();
+        } else {
+            addLocalLog("[Error] Failed to save config.", true);
+        }
+    });
+}
 
 // option close modal on "Escape" key
 document.addEventListener('keydown', function(event) {
     if (event.key === "Escape") {
-        closeModal()
+        closeModal();
+        closeModalConfig();
     }
 });
 

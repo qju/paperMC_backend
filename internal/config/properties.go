@@ -14,15 +14,15 @@ const fileName string = "server.properties"
 
 func LoadProperties(path string) (map[string]string, error) {
 	fullPath := filepath.Join(path, fileName)
-	fi, err := os.Open(fullPath)
+	file, err := os.Open(fullPath)
 
 	if err != nil {
 		return nil, err
 	}
-	defer fi.Close()
+	defer file.Close()
 
 	props := make(map[string]string)
-	scanner := bufio.NewScanner(fi)
+	scanner := bufio.NewScanner(file)
 	// scanner.Split("=")
 	for scanner.Scan() {
 		// Save the read line and clean it
