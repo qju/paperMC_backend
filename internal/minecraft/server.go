@@ -36,7 +36,7 @@ func (s Status) String() string {
 type Server struct {
 	// Public fields
 	WorkDir string
-	JarPath string
+	JarFile string
 	RAM     string
 	Args    []string
 	LogChan chan string
@@ -57,7 +57,7 @@ func (s *Server) Start() error {
 	if s.status == StatusRunning {
 		return errors.New("Server is already running")
 	}
-	s.cmd = exec.Command("java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarPath, "nogui")
+	s.cmd = exec.Command("java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
 	s.cmd.Dir = s.WorkDir
 
 	pipe_in, err_in := s.cmd.StdinPipe()
@@ -76,6 +76,7 @@ func (s *Server) Start() error {
 		return err
 	}
 	s.status = StatusRunning
+	go s.StreamLogs()
 	return nil
 }
 
@@ -142,10 +143,10 @@ func (s *Server) GetStatus() Status {
 	return s.status
 }
 
-func NewServer(workDir string, jarPath string, ram string) *Server {
+func NewServer(workDir string, jarFile string, ram string) *Server {
 	return &Server{
 		WorkDir: workDir,
-		JarPath: jarPath,
+		JarFile: jarFile,
 		RAM:     ram,
 		LogChan: make(chan string),
 		status:  StatusStopped,
@@ -178,5 +179,3 @@ func (s *Server) WhiteListUser(username string) error {
 	// Failure: Neither API found a user
 
 }
-
-//["java", "-Xms9216M", "-Xmx9216M", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseG1GC", "-XX:G1HeapRegionSize=8M", "-XX:G1HeapWastePercent=5", "-XX:G1MaxNewSizePercent=40", "-XX:G1MixedGCCountTarget=4", "-XX:G1MixedGCLiveThresholdPercent=90", "-XX:G1NewSizePercent=30", "-XX:G1RSetUpdatingPauseTimePercent=5", "-XX:G1ReservePercent=20", "-XX:InitiatingHeapOccupancyPercent=15", "-XX:MaxGCPauseMillis=200", "-XX:MaxTenuringThreshold=1", "-XX:SurvivorRatio=32", "-Dusing.aikars.flags=https://mcflags.emc.gs", "-Daikars.new.flags=true"]

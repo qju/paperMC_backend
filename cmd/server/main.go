@@ -28,6 +28,8 @@ func main() {
 	mux.HandleFunc("POST /start", mcHandler.Start)
 	mux.HandleFunc("POST /stop", mcHandler.Stop)
 	mux.HandleFunc("POST /config", mcHandler.PostConfig)
+	mux.HandleFunc("POST /update", mcHandler.HandleUpdate)
+
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
 
 	protectedMux := mcHandler.BasicAuth(mux, cfg.AdminUser, cfg.AdminPass)

@@ -57,11 +57,18 @@ function openModalWhitelist() {
 function openModalConfig() {
     document.getElementById("config-modal-overlay").classList.remove('hidden')
 }
+function openModalUpdate() {
+    document.getElementById("update-modal-overlay").classList.remove('hidden')
+}
 
 function closeModal() {
     document.getElementById("modal-overlay").classList.add('hidden')
     document.getElementById("modal-input").value = '' //clear it
 }
+function closeModalUpdate() {
+    document.getElementById("update-modal-overlay").classList.add('hidden')
+}
+
 function whiteList() {
     const wlInput = document.getElementById('modal-input');
     const cmd = wlInput.value;

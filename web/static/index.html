@@ -23,6 +23,7 @@
                 <div style="padding: 10px;">
                     <button class="mc-btn mc-btn-menu" onclick="openModalWhitelist()">Whitelist</button>
                     <button class="mc-btn mc-btn-menu" onclick="openModalConfig()">Edit Config</button>
+                    <button class="mc-btn mc-btn-menu" onclick="openModalUpdate()">Update Server</button>
                 </div>
             </div> 
             <div id="modal-overlay" class="overlay hidden">
@@ -49,6 +50,22 @@
                     <div class="modal-actions">
                         <button class="mc-btn" style="background-color: #666;" onclick="closeModalConfig()">Cancel</button>
                         <button class="mc-btn btn-start" onclick="saveConfig()">Save Changes</button>
+                    </div>    
+                </div>
+            </div>
+            <div id="update-modal-overlay" class="overlay hidden">
+                <div class="modal-box" style="border-color: #aa0000;"> <div class="modal-title" style="color: #aa0000;">⚠ Update Server</div>
+                    
+                    <p style="color: #333; margin: 0;">Target Version:</p>
+                    <input type="text" class="modal-input" id="update-version-input" placeholder="e.g. 1.21.1">
+                    
+                    <div id="update-spinner" class="hidden" style="margin-top: 10px; color: #aa0000; text-align: center;">
+                        ⏳ Update in progress... Check Console.
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="mc-btn" style="background-color: #666;" onclick="closeModalUpdate()">Cancel</button>
+                        <button class="mc-btn" style="background-color: #aa0000;" onclick="performUpdate()">START UPDATE</button>
                     </div>    
                 </div>
             </div>
