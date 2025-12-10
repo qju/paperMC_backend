@@ -5,3 +5,4 @@ server.properties
 *.csv
 *.txt
 *.ods
+dev_plan.md
