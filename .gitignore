@@ -6,3 +6,4 @@ server.properties
 *.txt
 *.ods
 dev_plan.md
+paper.db

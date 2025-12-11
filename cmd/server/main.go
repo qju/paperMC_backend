@@ -15,10 +15,9 @@ import (
 )
 
 func main() {
-	// Keeping pointer
 	cfg := config.Load()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
-	store, err := database.NewSQLiteStore("paper.db")
+	store, err := database.NewSQLiteStore(cfg.DbName)
 	if err != nil {
 		log.Fatalf("CRITICAL ERROR, %v", err)
 	}
@@ -27,19 +26,29 @@ func main() {
 	mcHandler := api.NewServerHandler(mcServer, store)
 
 	mux := http.NewServeMux()
+
+	// Public Routes
 	mux.HandleFunc("POST /login", mcHandler.Login)
-	mux.Handle("GET /status", auth.AuthMiddleware(http.HandlerFunc(mcHandler.GetStatus)))
-	mux.Handle("GET /logs", auth.AuthMiddleware(http.HandlerFunc(mcHandler.HandleLogs)))
-	mux.Handle("GET /config", auth.AuthMiddleware(http.HandlerFunc(mcHandler.GetConfig)))
-
-	mux.Handle("POST /command", auth.AuthMiddleware(http.HandlerFunc(mcHandler.SendCommand)))
-	mux.Handle("POST /whitelist_add", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Whitelisting)))
-	mux.Handle("POST /start", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Start)))
-	mux.Handle("POST /stop", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Stop)))
-	mux.Handle("POST /config", auth.AuthMiddleware(http.HandlerFunc(mcHandler.PostConfig)))
-	mux.Handle("POST /update", auth.AuthMiddleware(http.HandlerFunc(mcHandler.HandleUpdate)))
-
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
+
+	// Protected Routes in a Map
+	// Key = Path, Value = Handler Function
+	protectedRoutes := map[string]http.HandlerFunc{
+		"GET /status": mcHandler.GetStatus,
+		"GET /logs":   mcHandler.HandleLogs,
+		"GET /config": mcHandler.GetConfig,
+
+		"POST /command":       mcHandler.SendCommand,
+		"POST /whitelist_add": mcHandler.Whitelisting,
+		"POST /start":         mcHandler.Start,
+		"POST /stop":          mcHandler.Stop,
+		"POST /config":        mcHandler.PostConfig,
+		"POST /update":        mcHandler.HandleUpdate,
+	}
+
+	for path, handler := range protectedRoutes {
+		mux.Handle(path, auth.AuthMiddleware(http.HandlerFunc(handler)))
+	}
 
 	go func() {
 		if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
