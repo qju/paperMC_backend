@@ -21,7 +21,6 @@ func Load() *Config {
 		JarFile:   getEnv("JAR_FILE", "server.jar"),
 		RAM:       getEnv("RAM", "2048M"),
 		AdminUser: getEnv("ADMIN_USER", "admin"),
-		AdminPass: getEnvNoFallback("ADMIN_PASS"),
 	}
 }
 
@@ -30,11 +29,4 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-func getEnvNoFallback(key string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	panic("Add Admin password to ENVIRONMENT variable: " + key)
 }

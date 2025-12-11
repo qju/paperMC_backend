@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"paperMC_backend/internal/api"
+	"paperMC_backend/internal/auth"
 	"paperMC_backend/internal/config"
+	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
 	"syscall"
 )
@@ -16,25 +18,31 @@ func main() {
 	// Keeping pointer
 	cfg := config.Load()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
-	mcHandler := api.NewServerHandler(mcServer)
+	store, err := database.NewSQLiteStore("paper.db")
+	if err != nil {
+		log.Fatalf("CRITICAL ERROR, %v", err)
+	}
+	defer store.Close()
+
+	mcHandler := api.NewServerHandler(mcServer, store)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /status", mcHandler.GetStatus)
-	mux.HandleFunc("GET /logs", mcHandler.HandleLogs)
-	mux.HandleFunc("GET /config", mcHandler.GetConfig)
+	mux.HandleFunc("POST /login", mcHandler.Login)
+	mux.Handle("GET /status", auth.AuthMiddleware(http.HandlerFunc(mcHandler.GetStatus)))
+	mux.Handle("GET /logs", auth.AuthMiddleware(http.HandlerFunc(mcHandler.HandleLogs)))
+	mux.Handle("GET /config", auth.AuthMiddleware(http.HandlerFunc(mcHandler.GetConfig)))
 
-	mux.HandleFunc("POST /command", mcHandler.SendCommand)
-	mux.HandleFunc("POST /whitelist_add", mcHandler.Whitelisting)
-	mux.HandleFunc("POST /start", mcHandler.Start)
-	mux.HandleFunc("POST /stop", mcHandler.Stop)
-	mux.HandleFunc("POST /config", mcHandler.PostConfig)
-	mux.HandleFunc("POST /update", mcHandler.HandleUpdate)
+	mux.Handle("POST /command", auth.AuthMiddleware(http.HandlerFunc(mcHandler.SendCommand)))
+	mux.Handle("POST /whitelist_add", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Whitelisting)))
+	mux.Handle("POST /start", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Start)))
+	mux.Handle("POST /stop", auth.AuthMiddleware(http.HandlerFunc(mcHandler.Stop)))
+	mux.Handle("POST /config", auth.AuthMiddleware(http.HandlerFunc(mcHandler.PostConfig)))
+	mux.Handle("POST /update", auth.AuthMiddleware(http.HandlerFunc(mcHandler.HandleUpdate)))
 
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
 
-	protectedMux := mcHandler.BasicAuth(mux, cfg.AdminUser, cfg.AdminPass)
 	go func() {
-		if err := http.ListenAndServe(":"+cfg.Port, protectedMux); err != nil {
+		if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
 			log.Fatalf("CRITICAL ERROR, %v", err)
 		}
 	}()

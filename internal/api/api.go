@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"paperMC_backend/internal/config"
+	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
 	"paperMC_backend/internal/updater"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 type Handler struct {
 	mc       *minecraft.Server
 	updateMu sync.Mutex
+	store    database.Store
 }
 
 func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
@@ -33,10 +35,11 @@ func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
 
 }
 
-func NewServerHandler(mcServer *minecraft.Server) *Handler {
+func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler {
 	return &Handler{
 		mc:       mcServer,
 		updateMu: sync.Mutex{},
+		store:    store,
 	}
 }
 
