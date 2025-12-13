@@ -47,9 +47,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// 1. Try extracting from Header
 		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		}
+		tokenString, _ = strings.CutPrefix(authHeader, "Bearer ")
+		tokenString = strings.TrimSpace(tokenString)
 
 		// 2. Fallback if header didn't provided token fallback to URL Query
 		if tokenString == "" {
