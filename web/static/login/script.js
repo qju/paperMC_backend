@@ -1,29 +1,36 @@
-function login() {
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+async function login() {
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
     const errorMessage = document.getElementById('error-message');
 
-    errorMessage.textContent = '';
-
-    if (!username || !password) {
-        errorMessage.textContent = 'Username and password are required.';
-        return;
-    }
-
-    // Simulate a login request
     errorMessage.textContent = 'Authenticating...';
-    setTimeout(() => {
-        // In a real application, you would send a request to the server
-        // to validate the credentials.
-        // For this example, we'll just check if the credentials are not empty
-        // and redirect to the main dashboard.
-        
-        // This is a placeholder for basic auth
-        // A real implementation should use a secure authentication method
-        // and handle the response from the server.
-        
-        // For now, we'll just redirect to the main page.
+    errorMessage.style.color = "#00ff00"; // Green for loading
+
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: usernameInput.value,
+                password: passwordInput.value
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Invalid Credentials");
+        }
+
+        const data = await response.json();
+
+        // 1. SAVE THE TOKEN
+        localStorage.setItem('token', data.token);
+
+        // 2. Redirect to Dashboard
         window.location.href = '/';
 
-    }, 1000);
+    } catch (err) {
+        console.error(err);
+        errorMessage.style.color = "#ff0000";
+        errorMessage.textContent = 'Login Failed: ' + err.message;
+    }
 }

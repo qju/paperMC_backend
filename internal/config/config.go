@@ -10,16 +10,20 @@ type Config struct {
 	JarFile string
 	RAM     string
 
-	DbName string
+	DBName    string
+	AdminUser string
+	AdminPass string
 }
 
 func Load() *Config {
 	return &Config{
-		Port:    getEnv("PORT", "8080"),
-		WorkDir: getEnv("MC_WORKDIR", "./paperMC"),
-		JarFile: getEnv("JAR_FILE", "server.jar"),
-		RAM:     getEnv("RAM", "2048M"),
-		DbName:  getEnv("DBNAME", "paper.db"),
+		Port:      getEnv("PORT", "8080"),
+		WorkDir:   getEnv("MC_WORKDIR", "./paperMC"),
+		JarFile:   getEnv("JAR_FILE", "server.jar"),
+		RAM:       getEnv("RAM", "2048M"),
+		DBName:    getEnv("DBNAME", "paper.db"),
+		AdminUser: getEnv("ADMIN_USER", "admin"),
+		AdminPass: getEnv("ADMIN_PASS", ""),
 	}
 }
 

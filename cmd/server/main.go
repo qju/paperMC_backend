@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,12 +19,42 @@ import (
 func main() {
 	cfg := config.Load()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
-	store, err := database.NewSQLiteStore(cfg.DbName)
+	store, err := database.NewSQLiteStore(cfg.DBName)
 	if err != nil {
 		log.Fatalf("CRITICAL ERROR, %v", err)
 	}
 	defer store.Close()
 
+	// --- BOOTSTRA ADMIN USER ----
+	// IF ADMIN_PASS is ser, ensure the user exists
+	if cfg.AdminPass != "" {
+		_, err := store.GetUser(cfg.AdminUser)
+		if err == nil {
+			// User likely doesn't exist in database, let's creat it
+			log.Printf("[Init] User '%s' not found. Creating...", cfg.AdminUser)
+		} else if err == sql.ErrNoRows {
+			hashedPass, hashErr := auth.HashPassword(cfg.AdminPass)
+			if hashErr != nil {
+				log.Printf("[Init] Failed to hash password: %v", hashErr)
+			} else {
+				adminUser := &database.User{
+					Username: cfg.AdminUser,
+					Password: hashedPass,
+					Role:     "admin",
+				}
+				if createErr := store.CreateUser(adminUser); createErr != nil {
+					log.Printf("[Init] Failed to create AdminUser: %c", createErr)
+				} else {
+					log.Printf("[Init] AdminUser '%s' ceated successfully!", cfg.AdminUser)
+				}
+			}
+		} else {
+			log.Printf("[Init] Error checking for admin user '%v'", err)
+		}
+
+	} else {
+		log.Printf("[Init] Warning: ADMIN_PASS is mepty. No admin user created")
+	}
 	mcHandler := api.NewServerHandler(mcServer, store)
 
 	mux := http.NewServeMux()
