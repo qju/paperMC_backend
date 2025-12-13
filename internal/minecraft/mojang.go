@@ -12,7 +12,7 @@ import (
 
 type MojangProfile struct {
 	Name string `json:"name"`
-	Id   string `json:"id"`
+	ID   string `json:"id"`
 }
 
 func GetUUID(name string) (string, error) {
@@ -27,12 +27,10 @@ func GetUUID(name string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
-
 		return "", errors.New("username not found")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-
 		return "", fmt.Errorf("mojang API error: %d", resp.StatusCode)
 	}
 
@@ -41,7 +39,7 @@ func GetUUID(name string) (string, error) {
 		return "", fmt.Errorf("invalid JSON %w", err)
 	}
 
-	return profile.Id, nil
+	return profile.ID, nil
 }
 
 type GeyserResponse struct {
@@ -63,12 +61,10 @@ func GetXUID(gamerTag string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
-
 		return "", errors.New("username not found")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-
 		return "", fmt.Errorf("mojang API error: %d", resp.StatusCode)
 	}
 

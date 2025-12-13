@@ -1,3 +1,11 @@
+// Package minecraft provides a wrapper for managing a Minecraft server process.
+//
+// It handles server lifecycle management (starting, stopping, status checks),
+// streams standard output logs, and facilitates sending commands to the server.
+//
+// Additionally, it includes utilities for user whitelisting by resolving:
+//   - Java Edition UUIDs via the Mojang API.
+//   - Bedrock/Xbox XUIDs via the Geyser API.
 package minecraft
 
 import (
@@ -13,9 +21,9 @@ import (
 type Status int
 
 const (
-	StatusStopped  Status = iota //0
-	StatusStarting               //1
-	StatusRunning                //2
+	StatusStopped  Status = iota // 0
+	StatusStarting               // 1
+	StatusRunning                // 2
 )
 
 const FloodgatePrefix = "."
@@ -35,11 +43,12 @@ func (s Status) String() string {
 
 type Server struct {
 	// Public fields
-	WorkDir string
-	JarFile string
-	RAM     string
-	Args    []string
-	LogChan chan string
+	WorkDir    string
+	JarFile    string
+	RAM        string
+	Args       []string
+	LogChan    chan string
+	LogHistory []string
 
 	// Private fields
 	cmd    *exec.Cmd
@@ -60,17 +69,17 @@ func (s *Server) Start() error {
 	s.cmd = exec.Command("java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
 	s.cmd.Dir = s.WorkDir
 
-	pipe_in, err_in := s.cmd.StdinPipe()
-	if err_in != nil {
-		return err_in
+	pipeIn, errIn := s.cmd.StdinPipe()
+	if errIn != nil {
+		return errIn
 	}
-	s.stdin = pipe_in
+	s.stdin = pipeIn
 
-	pipe_out, err_out := s.cmd.StdoutPipe()
-	if err_out != nil {
-		return err_out
+	pipeOut, errOut := s.cmd.StdoutPipe()
+	if errOut != nil {
+		return errOut
 	}
-	s.stdout = pipe_out
+	s.stdout = pipeOut
 
 	if err := s.cmd.Start(); err != nil {
 		return err
@@ -109,16 +118,36 @@ func (s *Server) StreamLogs() {
 }
 
 func (s *Server) Broadcast(msg string) {
-	// Sent msg to os output
-	fmt.Println(msg)
-
 	// Sent msg to frontend
 	select {
-	case s.LogChan <- msg:
-		// Send successfully
-	default:
-		// No browser connected, drop the msg
+	case s.LogChan <- msg: // Send successfully
+	default: // No browser connected, drop the msg
 	}
+
+	// Add message to the LogHistory and
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.LogHistory = append(s.LogHistory, msg)
+
+	// Ring Buffer: keep max 100 lines
+	if len(s.LogHistory) > 100 {
+		s.LogHistory = s.LogHistory[1:]
+	}
+
+	// Sent msg to os output
+	fmt.Println(msg)
+}
+
+func (s *Server) GetHistory() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Create a copy to be safe
+	history := make([]string, len(s.LogHistory))
+	copy(history, s.LogHistory)
+
+	return history
 }
 
 func (s *Server) SendCommand(cmd string) error {
@@ -145,11 +174,12 @@ func (s *Server) GetStatus() Status {
 
 func NewServer(workDir string, jarFile string, ram string) *Server {
 	return &Server{
-		WorkDir: workDir,
-		JarFile: jarFile,
-		RAM:     ram,
-		LogChan: make(chan string),
-		status:  StatusStopped,
+		WorkDir:    workDir,
+		JarFile:    jarFile,
+		RAM:        ram,
+		LogChan:    make(chan string),
+		status:     StatusStopped,
+		LogHistory: make([]string, 0),
 
 		Args: []string{},
 	}
@@ -177,5 +207,4 @@ func (s *Server) WhiteListUser(username string) error {
 	s.Broadcast(fmt.Sprintf("[ERROR] User %s not found on Mojang or Xbox live: %s", username, err))
 	return fmt.Errorf("user not found on Mojang or Xbox Live")
 	// Failure: Neither API found a user
-
 }

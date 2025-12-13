@@ -1,3 +1,24 @@
+function checkAuth() {
+    fetch('/status', {
+        headers: {
+            'Authorization': 'Bearer ' + localStorage.getItem('token')
+        }
+    }).then(response => {
+        if (response.status === 401) {
+            // Token invalid or missing -> Go to Login
+            window.location.href = "/login/";
+        }
+    }).catch(err => {
+        console.error("Auth check failed", err);
+    });
+}
+
+// Run immediately when page loads
+document.addEventListener("DOMContentLoaded", () => {
+    checkAuth();
+    // ... rest of your init code ...
+});
+
 const cmdInput = document.getElementById('cmd-input');
 const statusBadge = document.getElementById('status-badge');
 

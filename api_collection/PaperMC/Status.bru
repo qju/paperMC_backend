@@ -1,0 +1,16 @@
+meta {
+  name: Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: 127.0.0.1:8080/status
+  body: none
+  auth: bearer
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

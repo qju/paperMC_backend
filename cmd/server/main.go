@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
+
 	"paperMC_backend/internal/api"
 	"paperMC_backend/internal/auth"
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
-	"syscall"
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 	// Public Routes
 	mux.HandleFunc("POST /login", mcHandler.Login)
 	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
+	mux.Handle("login/", http.FileServer(http.Dir("./web/static/login")))
 
 	// Protected Routes in a Map
 	// Key = Path, Value = Handler Function
@@ -37,6 +39,8 @@ func main() {
 		"GET /status": mcHandler.GetStatus,
 		"GET /logs":   mcHandler.HandleLogs,
 		"GET /config": mcHandler.GetConfig,
+		// The webSocket Endpoint
+		"GET /ws": mcHandler.SocketHandler,
 
 		"POST /command":       mcHandler.SendCommand,
 		"POST /whitelist_add": mcHandler.Whitelisting,
@@ -46,8 +50,9 @@ func main() {
 		"POST /update":        mcHandler.HandleUpdate,
 	}
 
+	// Register all the protected routes
 	for path, handler := range protectedRoutes {
-		mux.Handle(path, auth.AuthMiddleware(http.HandlerFunc(handler)))
+		mux.Handle(path, auth.AuthMiddleware(handler))
 	}
 
 	go func() {
