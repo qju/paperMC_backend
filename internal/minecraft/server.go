@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/shirou/gopsutil/v3/process"
 	"io"
 	"os/exec"
 	"strings"
@@ -56,6 +57,13 @@ type Server struct {
 	status Status
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+}
+
+type Vitals struct {
+	Status  Status  `json:"status"`
+	CPU     float64 `json:"cpu"`
+	RAM     uint64  `json:"ram"`
+	Players int     `json:"players"`
 }
 
 func (s *Server) Start() error {
@@ -103,6 +111,41 @@ func (s *Server) Stop() error {
 	s.mu.Unlock()
 
 	return nil
+}
+
+func (s *Server) GetVitals() Vitals {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	vitals := Vitals{
+		Status:  s.status,
+		Players: 0, // Placevolder
+	}
+
+	// 1. If Server is not running, returm basic status (0 CPU/RAM)
+	if s.cmd == nil || s.cmd.Process == nil || s.status != StatusRunning {
+		return vitals
+	}
+
+	// 2. Create process inspector
+	proc, err := process.NewProcess(int32(s.cmd.Process.Pid))
+	if err != nil {
+		return vitals
+	}
+
+	// 3. GET CPU %
+	cpu, err := proc.Percent(0)
+	if err != nil {
+		vitals.CPU = cpu
+	}
+
+	// 4. Get RAM usage
+	mem, err := proc.MemoryInfo()
+	if err != nil {
+		vitals.RAM = mem.RSS
+	}
+
+	return vitals
 }
 
 func (s *Server) StreamLogs() {

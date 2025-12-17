@@ -1,34 +1,33 @@
 run:
   timeout: 5m
-  tests: false # Set to true if you want to lint test files too
+  tests: false
 
 linters:
-  disable-all: true
+  disable-all: false
   enable:
-    - errcheck      # Checks for unchecked errors
-    - gosimple      # Suggests simplifications
-    - govet         # Official Go tool vet
-    - ineffassign   # Detects assignments to existing variables not used
-    - staticcheck   # Static analysis checks
-    - typecheck     # Parses and type-checks Go code
-    - unused        # Checks for unused constants, variables, functions and types
-    - gocyclo       # Checks function cyclomatic complexity
-    - gofmt         # Checks if code is formatted (gofmt -s)
-    - gosec         # Security checker
-    - revive        # Faster replacement for golint
-    - misspell      # Fixes common typos
-    - prealloc      # Finds slice declarations that could potentially be preallocated
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gocyclo
+    - gosec
+    - revive
+    - misspell
 
 linters-settings:
   gocyclo:
-    min-complexity: 15 # Functions with complexity > 15 will fail
+    min-complexity: 15
   revive:
     severity: warning
   gosec:
     excludes:
-      - G104 # Ignore "audit errors not checked" if you find it too noisy
+      - G104
 
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+

@@ -55,6 +55,16 @@ type UpdateRequest struct {
 	Version string `json:"version"`
 }
 
+func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
+	vitals := h.mc.GetVitals()
+
+	// 2. Send as JSON
+	w.Header().Set("Content-type", "application/json")
+	if err := json.NewEncoder(w).Encode(vitals); err != nil {
+		http.Error(w, "Failed to encode vitals", http.StatusInternalServerError)
+	}
+}
+
 func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	response := StatusResponse{Status: h.mc.GetStatus().String()}
 	w.Header().Set("Content-Type", "application/json")

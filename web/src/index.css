@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-mc-bg text-white font-mono min-h-screen;
+    /* The subtle background texture */
+    background-image: 
+      repeating-linear-gradient(45deg, #1a1a1a 25%, transparent 25%, transparent 75%, #1a1a1a 75%, #1a1a1a), 
+      repeating-linear-gradient(45deg, #1a1a1a 25%, #111111 25%, #111111 75%, #1a1a1a 75%, #1a1a1a);
+    background-position: 0 0, 10px 10px;
+    background-size: 20px 20px;
+  }
+}
+
+/* Custom "Glass" Panel Utility */
+@layer components {
+  .mc-panel {
+    @apply bg-black/60 backdrop-blur-md border border-white/10 rounded-lg shadow-xl;
+  }
+  
+  .mc-btn {
+    @apply font-pixel text-xl uppercase px-4 py-2 border transition-all duration-100;
+    /* Modern flat style with a nod to the retro bevel */
+    @apply border-white/20 bg-white/5 hover:bg-white/10 active:scale-95;
+  }
+}
+
