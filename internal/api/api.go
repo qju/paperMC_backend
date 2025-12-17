@@ -65,12 +65,6 @@ func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	response := StatusResponse{Status: h.mc.GetStatus().String()}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
 func (h *Handler) Whitelisting(w http.ResponseWriter, r *http.Request) {
 	var req = CommandRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -18,7 +18,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:      getEnv("PORT", "8080"),
-		WorkDir:   getEnv("MC_WORKDIR", "./paperMC"),
+		WorkDir:   getEnv("MC_WORKDIR", "./paperMS"),
 		JarFile:   getEnv("JAR_FILE", "server.jar"),
 		RAM:       getEnv("RAM", "2048M"),
 		DBName:    getEnv("DBNAME", "paper.db"),

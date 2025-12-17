@@ -3,10 +3,12 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"paperMC_backend/internal/api"
@@ -14,6 +16,7 @@ import (
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
+	"paperMC_backend/web"
 )
 
 func main() {
@@ -55,19 +58,28 @@ func main() {
 	} else {
 		log.Printf("[Init] Warning: ADMIN_PASS is mepty. No admin user created")
 	}
-	mcHandler := api.NewServerHandler(mcServer, store)
 
+	mcHandler := api.NewServerHandler(mcServer, store)
 	mux := http.NewServeMux()
+
+	// Prepare the forwared Files
+	distFS, err := fs.Sub(web.DistFs, "dist")
+	if err != nil {
+		log.Fatalf("Failed to load embedded frontend: %v", err)
+	}
+
+	// Create a standard file server
+	fileserver := http.FileServer(http.FS(distFS))
+
+	// --- DEFINES ROUTES ---
 
 	// Public Routes
 	mux.HandleFunc("POST /login", mcHandler.Login)
-	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
-	mux.Handle("login/", http.FileServer(http.Dir("./web/static/login")))
 
 	// Protected Routes in a Map
 	// Key = Path, Value = Handler Function
 	protectedRoutes := map[string]http.HandlerFunc{
-		"GET /status": mcHandler.GetStatus,
+		"GET /status": mcHandler.HandleStatus,
 		"GET /logs":   mcHandler.HandleLogs,
 		"GET /config": mcHandler.GetConfig,
 		// The webSocket Endpoint
@@ -86,7 +98,22 @@ func main() {
 		mux.Handle(path, auth.AuthMiddleware(handler))
 	}
 
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// try to server the requested file (e.g., /assers/style.css)
+		path := strings.TrimPrefix(r.URL.Path, "/")
+
+		file, err := distFS.Open(path)
+		if err != nil {
+			r.URL.Path = "/"
+		} else {
+			file.Close()
+		}
+		fileserver.ServeHTTP(w, r)
+
+	}))
+
 	go func() {
+		log.Printf("Server starting on port: %s", cfg.Port)
 		if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
 			log.Fatalf("CRITICAL ERROR, %v", err)
 		}

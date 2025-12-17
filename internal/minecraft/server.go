@@ -57,6 +57,7 @@ type Server struct {
 	status Status
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+	proc   *process.Process
 }
 
 type Vitals struct {
@@ -64,6 +65,12 @@ type Vitals struct {
 	CPU     float64 `json:"cpu"`
 	RAM     uint64  `json:"ram"`
 	Players int     `json:"players"`
+}
+
+// MarshalText implements the encoding.TextMarshaler interface.
+// This overrides the default integer serialization (0, 1, 2) with strings ("Stopped", etc).
+func (s Status) MarshalText() ([]byte, error) {
+	return []byte(s.String()), nil
 }
 
 func (s *Server) Start() error {
@@ -92,6 +99,14 @@ func (s *Server) Start() error {
 	if err := s.cmd.Start(); err != nil {
 		return err
 	}
+	// 2. Create process inspector
+	var err error
+	s.proc, err = process.NewProcess(int32(s.cmd.Process.Pid))
+	if err != nil {
+		s.cmd.Process.Kill()
+		return err
+	}
+
 	s.status = StatusRunning
 	go s.StreamLogs()
 	return nil
@@ -103,10 +118,15 @@ func (s *Server) Stop() error {
 	}
 	s.SendCommand("stop")
 	if err := s.cmd.Wait(); err != nil {
+		s.mu.Lock()
+		s.proc = nil
+		s.status = StatusStopped
+		s.mu.Unlock()
 		return err
 	}
 
 	s.mu.Lock()
+	s.proc = nil
 	s.status = StatusStopped
 	s.mu.Unlock()
 
@@ -114,6 +134,7 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) GetVitals() Vitals {
+	// ToDo: if satus failes in front end add Text Marshal
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,23 +148,19 @@ func (s *Server) GetVitals() Vitals {
 		return vitals
 	}
 
-	// 2. Create process inspector
-	proc, err := process.NewProcess(int32(s.cmd.Process.Pid))
+	// 3. GET CPU %
+	cpu, err := s.proc.Percent(0)
 	if err != nil {
 		return vitals
 	}
-
-	// 3. GET CPU %
-	cpu, err := proc.Percent(0)
-	if err != nil {
-		vitals.CPU = cpu
-	}
+	vitals.CPU = cpu
 
 	// 4. Get RAM usage
-	mem, err := proc.MemoryInfo()
+	mem, err := s.proc.MemoryInfo()
 	if err != nil {
-		vitals.RAM = mem.RSS
+		return vitals
 	}
+	vitals.RAM = mem.RSS
 
 	return vitals
 }
