@@ -15,7 +15,6 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 	"io"
 	"os/exec"
-	"strings"
 	"sync"
 )
 
@@ -61,10 +60,11 @@ type Server struct {
 }
 
 type Vitals struct {
-	Status  Status  `json:"status"`
-	CPU     float64 `json:"cpu"`
-	RAM     uint64  `json:"ram"`
-	Players int     `json:"players"`
+	Status      Status  `json:"status"`
+	CPU         float64 `json:"cpu"`
+	RAM         uint64  `json:"ram"`
+	TotalMemory string  `json:"total_memory"`
+	Players     int     `json:"players"`
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
@@ -139,8 +139,9 @@ func (s *Server) GetVitals() Vitals {
 	defer s.mu.Unlock()
 
 	vitals := Vitals{
-		Status:  s.status,
-		Players: 0, // Placevolder
+		Status:      s.status,
+		TotalMemory: s.RAM,
+		Players:     0, // Placeholder
 	}
 
 	// 1. If Server is not running, returm basic status (0 CPU/RAM)
@@ -243,28 +244,4 @@ func NewServer(workDir string, jarFile string, ram string) *Server {
 
 		Args: []string{},
 	}
-}
-
-func (s *Server) WhiteListUser(username string) error {
-	uuid, err := GetUUID(username)
-
-	if err == nil {
-		s.Broadcast(fmt.Sprintf("[System] Whitelisting Java UUID: %s for %s\n", uuid, username))
-		return s.SendCommand("whitelist add " + username)
-	}
-
-	xuid, err := GetXUID(username)
-	if err == nil {
-		s.Broadcast(fmt.Sprintf("[System] Whitelisting Xbox XUID: %s for %s\n", xuid, username))
-
-		finalName := username
-		if !strings.HasPrefix(username, FloodgatePrefix) {
-			finalName = FloodgatePrefix + username
-		}
-		return s.SendCommand("fwhitelist add " + finalName)
-	}
-
-	s.Broadcast(fmt.Sprintf("[ERROR] User %s not found on Mojang or Xbox live: %s", username, err))
-	return fmt.Errorf("user not found on Mojang or Xbox Live")
-	// Failure: Neither API found a user
 }

@@ -1,15 +1,85 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Terminal, Users, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
+// 1. Define the Shape of the API Response
+interface Vitals {
+    status: string;
+    cpu: number;
+    ram: number;        // in Bytes (RSS)
+    total_memory: string; // e.g., "4G", "1024M"
+    players: number;
+}
 
 export default function DashboardLayout() {
     const navigate = useNavigate();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-    const handleLogout = () => {
+    // 2. State for Vitals
+    const [vitals, setVitals] = useState<Vitals | null>(null);
+    const [isPolling] = useState(true);
+
+    const handleLogout = useCallback(() => {
         localStorage.removeItem('token');
         navigate('/login');
+    }, [navigate]);
+
+    // 3. The Polling Hook
+    useEffect(() => {
+        if (!isPolling) return;
+
+        const fetchVitals = async () => {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
+
+            try {
+                const res = await fetch('/status', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.status === 401) {
+                    handleLogout();
+                    return;
+                }
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setVitals(data);
+                }
+            } catch (err) {
+                console.error("Failed to fetch vitals", err);
+            }
+        };
+
+        // Initial fetch
+        fetchVitals();
+
+        // Poll every 1 second
+        const interval = setInterval(fetchVitals, 10000);
+        return () => clearInterval(interval);
+    }, [isPolling, navigate, handleLogout]);
+
+    // 4. Helper to parse RAM string (e.g. "4G" -> 4) for the progress bar
+    const parseMaxRam = (ramStr: string): number => {
+        if (!ramStr) return 1;
+        const value = parseInt(ramStr.slice(0, -1));
+        const unit = ramStr.slice(-1).toUpperCase();
+        if (unit === 'G') return value * 1024 * 1024 * 1024;
+        if (unit === 'M') return value * 1024 * 1024;
+        return value;
     };
+
+    // Helper to format Bytes to GB
+    const formatBytes = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
+
+    // Calculate Percentages
+    const maxRamBytes = vitals ? parseMaxRam(vitals.total_memory) : 1;
+    const ramPercent = vitals ? Math.min((vitals.ram / maxRamBytes) * 100, 100) : 0;
+    const cpuPercent = vitals ? Math.min(vitals.cpu, 100) : 0;
+    const isOnline = vitals?.status === "Running";
 
     return (
         <div className="flex h-screen overflow-hidden bg-dirt-pattern text-white">
@@ -22,7 +92,7 @@ export default function DashboardLayout() {
                 </button>
             </div>
 
-            {/* LEFT SIDEBAR (Navigation) */}
+            {/* LEFT SIDEBAR */}
             <aside className={`
         fixed md:static inset-y-0 left-0 z-40 w-64 transform transition-transform duration-300 ease-in-out
         bg-black/80 backdrop-blur-xl border-r border-white/10 flex flex-col
@@ -53,15 +123,14 @@ export default function DashboardLayout() {
                 </div>
             </aside>
 
-            {/* MAIN CONTENT AREA */}
+            {/* MAIN CONTENT */}
             <main className="flex-1 overflow-auto relative pt-16 md:pt-0 flex flex-col">
                 <div className="flex-1 p-4 md:p-6 overflow-hidden">
                     <Outlet />
                 </div>
             </main>
 
-            {/* RIGHT SIDEBAR (Status Panel) */}
-            {/* Hidden on Tablet/Mobile (xl:flex means only visible on extra large screens) */}
+            {/* RIGHT SIDEBAR (Live Vitals) */}
             <aside className="hidden xl:flex w-80 bg-black/60 backdrop-blur-md border-l border-white/10 flex-col p-6 gap-6">
 
                 <div className="flex items-center gap-2 mb-2 text-mc-gold font-pixel text-xl">
@@ -69,63 +138,62 @@ export default function DashboardLayout() {
                     <span>Server Vitals</span>
                 </div>
 
-                {/* Vital Card: Status */}
+                {/* STATUS */}
                 <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
                     <div className="text-xs text-white/50 mb-1 uppercase tracking-wider">Status</div>
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-mc-green shadow-[0_0_8px_#55aa55]"></div>
-                        <span className="font-mono text-lg text-mc-green">Online</span>
+                        <div className={`w-3 h-3 rounded-full shadow-[0_0_8px] transition-colors ${isOnline ? 'bg-mc-green shadow-[#55aa55]' : 'bg-red-500 shadow-red-500'}`}></div>
+                        <span className={`font-mono text-lg ${isOnline ? 'text-mc-green' : 'text-red-400'}`}>
+                            {vitals?.status || "Offline"}
+                        </span>
                     </div>
                 </div>
 
-                {/* Vital Card: RAM */}
+                {/* RAM */}
                 <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2 text-xs text-white/50 uppercase tracking-wider">
-                            <Zap size={14} /> RAM Usage
+                            <Zap size={14} /> RAM (RSS)
                         </div>
-                        <span className="text-xs font-mono text-mc-diamond">2.4 GB / 8 GB</span>
+                        <span className="text-xs font-mono text-mc-diamond">
+                            {vitals ? formatBytes(vitals.ram) : 0} GB / {vitals?.total_memory || "?"}
+                        </span>
                     </div>
-                    {/* Progress Bar */}
                     <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-mc-diamond w-[30%] shadow-[0_0_10px_#55ffff]"></div>
+                        <div
+                            className="h-full bg-mc-diamond shadow-[0_0_10px_#55ffff] transition-all duration-500"
+                            style={{ width: `${ramPercent}%` }}
+                        ></div>
                     </div>
                 </div>
 
-                {/* Vital Card: CPU */}
+                {/* CPU */}
                 <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2 text-xs text-white/50 uppercase tracking-wider">
                             <Cpu size={14} /> CPU Load
                         </div>
-                        <span className="text-xs font-mono text-mc-gold">12%</span>
+                        <span className="text-xs font-mono text-mc-gold">
+                            {vitals?.cpu.toFixed(1) || 0}%
+                        </span>
                     </div>
-                    {/* Progress Bar */}
                     <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-mc-gold w-[12%] shadow-[0_0_10px_#ffaa00]"></div>
+                        <div
+                            className="h-full bg-mc-gold shadow-[0_0_10px_#ffaa00] transition-all duration-500"
+                            style={{ width: `${cpuPercent}%` }}
+                        ></div>
                     </div>
                 </div>
 
-                {/* Mini Player List */}
+                {/* PLAYERS (Placeholder for Milestone 3.1) */}
                 <div className="flex-1 bg-black/40 border border-white/10 p-4 rounded-lg flex flex-col">
                     <div className="text-xs text-white/50 mb-3 uppercase tracking-wider flex justify-between">
                         <span>Online Players</span>
-                        <span>3 / 20</span>
+                        <span>{vitals?.players || 0}</span>
                     </div>
-
-                    <ul className="space-y-2 overflow-y-auto pr-2 custom-scrollbar">
-                        {['Notch', 'Jeb_', 'Dinnerbone'].map(user => (
-                            <li key={user} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded transition-colors cursor-pointer">
-                                {/* Steve Head Avatar Placeholder */}
-                                <img
-                                    src={`https://api.mineatar.io/face/${user}`}
-                                    alt={user}
-                                    className="w-6 h-6 rounded-sm pixelated"
-                                />
-                                <span className="font-mono text-sm text-white/80">{user}</span>
-                            </li>
-                        ))}
-                    </ul>
+                    <div className="text-white/30 text-xs italic text-center mt-4">
+                        Player list coming in Milestone 3.1
+                    </div>
                 </div>
 
             </aside>
@@ -141,7 +209,6 @@ export default function DashboardLayout() {
     );
 }
 
-// Helper for Links (unchanged)
 function NavItem({ to, icon, label, onClick }: { to: string, icon: React.ReactNode, label: string, onClick?: () => void }) {
     return (
         <NavLink
@@ -159,4 +226,3 @@ function NavItem({ to, icon, label, onClick }: { to: string, icon: React.ReactNo
         </NavLink>
     );
 }
-

@@ -1,4 +1,3 @@
-// --- BOILERPLATE (Safe to Copy) ---
 import { useEffect, useRef, useState } from 'react';
 
 type LogMessage = {

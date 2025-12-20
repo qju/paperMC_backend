@@ -20,7 +20,7 @@ func Load() *Config {
 		Port:      getEnv("PORT", "8080"),
 		WorkDir:   getEnv("MC_WORKDIR", "./paperMS"),
 		JarFile:   getEnv("JAR_FILE", "server.jar"),
-		RAM:       getEnv("RAM", "2048M"),
+		RAM:       getEnv("RAM", "6144M"),
 		DBName:    getEnv("DBNAME", "paper.db"),
 		AdminUser: getEnv("ADMIN_USER", "admin"),
 		AdminPass: getEnv("ADMIN_PASS", ""),
