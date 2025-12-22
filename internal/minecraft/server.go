@@ -12,10 +12,14 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/shirou/gopsutil/v3/process"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
+
+	"paperMC_backend/internal/database"
+
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 type Status int
@@ -51,6 +55,7 @@ type Server struct {
 	LogHistory []string
 
 	// Private fields
+	store  database.Store
 	cmd    *exec.Cmd
 	mu     sync.Mutex
 	status Status
@@ -170,11 +175,43 @@ func (s *Server) StreamLogs() {
 	scanner := bufio.NewScanner(s.stdout)
 
 	for scanner.Scan() {
-		s.Broadcast("[MC] " + scanner.Text())
+		text := scanner.Text()
+		s.Broadcast("[MC] " + text)
+		if strings.Contains(text, "You are not white-listed on this server") {
+			go s.handleRejection(text)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Error reading log %v\n", err)
+	}
+}
+
+func (s *Server) handleRejection(logLine string) {
+	// Line format example:
+	//[11:57:02] [Server thread/INFO]: Bob lost connection: Disconnected
+	//
+	// 1. Extract Username
+	// Split by ": "
+	parts := strings.Split(logLine, ": ")
+	if len(parts) < 3 {
+		return
+	}
+	// Take the part after ".../INFO]" -> "Bob lost conection"
+	// Split by " "
+	subParts := strings.Split(parts[1], " ")
+	if len(subParts) < 3 {
+		return
+	}
+	username := strings.TrimSpace(subParts[0])
+
+	// 2. Persist to DB
+	if username != "" {
+		// 3. Check if white-listed
+		fmt.Printf("[System] Detected blocked player: %s. Saving to DB.\n", username)
+		if err := s.store.UpsertRrejectedPlayer(username); err != nil {
+			fmt.Printf("[Error] Failed to save rejected player: %v\n", err)
+		}
 	}
 }
 
@@ -233,14 +270,15 @@ func (s *Server) GetStatus() Status {
 	return s.status
 }
 
-func NewServer(workDir string, jarFile string, ram string) *Server {
+func NewServer(workDir string, jarFile string, ram string, store database.Store) *Server {
 	return &Server{
 		WorkDir:    workDir,
 		JarFile:    jarFile,
 		RAM:        ram,
 		LogChan:    make(chan string),
-		status:     StatusStopped,
 		LogHistory: make([]string, 0),
+		status:     StatusStopped,
+		store:      store,
 
 		Args: []string{},
 	}

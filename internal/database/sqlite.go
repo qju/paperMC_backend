@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -35,6 +36,7 @@ func NewSQLiteStore(storePath string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) Migrate() error {
+	// 1. User Table
 	SQL := `CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT NOT NULL,
@@ -42,7 +44,17 @@ func (s *SQLiteStore) Migrate() error {
 			role TEXT NOT NULL
 		)`
 
-	_, err := s.db.Exec(SQL)
+	if _, err := s.db.Exec(SQL); err != nil {
+		return err
+	}
+
+	// 2. Rejected Players table
+	queryRejected := `CREATE TABLE IF NOT EXISTS rejected_palyers (
+		username TEXT PRIMARY KEY,
+		count INTEGER DEFAULT 1,
+		last_sean DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, err := s.db.Exec(queryRejected)
 	return err
 }
 
@@ -66,4 +78,50 @@ func (s *SQLiteStore) CreateUser(user *User) error {
 
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+// --- Players Inteligence ---
+
+func (s *SQLiteStore) UpsertRejectedPlayer(username string) error {
+	// If exist, update count and time. If not INSERT
+	SQL := `INSERT INTO rejected_players (username, count, last_sean)
+			VALUE (?, 1, CURRENT_TIMESTAMP)
+			ON CONFLICT(username) DO UPDATE SELECT
+				count = count + 1
+				last_sean = CURRENT_TIMESTAMP`
+	_, err := s.db.Exec(SQL)
+	return err
+}
+
+func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
+	SQL := `SELECT username, count, last_sean FROM rejected_players ORDER BY last_sean DESC LIMIT 50`
+	rows, err := s.db.Query(SQL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []RejectedPlayer
+	for rows.Next() {
+		var p RejectedPlayer
+		var t string
+		if err := rows.Scan(&p.Username, &p.Count, &t); err != nil {
+			continue
+		}
+		// SQLite standard format: 2006-01-02 15:04:05
+		// modernc.org/sqlite might return it differently depending on driver settings,
+		// but typically scanning into a string is safest, then parse.
+		// For simplicity in this stack, let's assume standard layout:
+		parsedTime, _ := time.Parse("2006-01-02 15:04:05", t)
+		p.LastSeen = parsedTime
+		list = append(list, p)
+
+	}
+	return list, nil
+}
+
+func (s *SQLiteStore) DeleteRejectePlayer(username string) error {
+	SQL := `DELETE FROM rejected_players WHERE username = ?`
+	_, err := s.db.Exec(SQL, username)
+	return err
 }

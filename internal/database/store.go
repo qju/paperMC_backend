@@ -1,5 +1,9 @@
 package database
 
+import (
+	"time"
+)
+
 type User struct {
 	ID       int
 	Username string
@@ -7,9 +11,22 @@ type User struct {
 	Role     string
 }
 
+type RejectedPlayer struct {
+	Username string    `json:"username"`
+	Count    int       `json:"count"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
 type Store interface {
 	Migrate() error
+	Close() error
+
+	// User Auth
 	GetUser(username string) (*User, error)
 	CreateUser(user *User) error
-	Close() error
+
+	//Player Intelligence
+	UpsertRrejectedPlayer(username string) error
+	GetRejectedPlayers() ([]RejectedPlayer, error)
+	DeleteRejectedPlayer(username string) error
 }

@@ -149,6 +149,16 @@ func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) HandleGetPlayers(w http.ResponseWriter, r *http.Request) {
+	players, err := h.mc.GetWhitelist()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(players)
+}
+
 func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := config.LoadProperties(h.mc.WorkDir)
 	if err != nil {
