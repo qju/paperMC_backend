@@ -65,7 +65,7 @@ func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) Whitelisting(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) WhiteListing(w http.ResponseWriter, r *http.Request) {
 	var req = CommandRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -147,16 +147,6 @@ func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-}
-
-func (h *Handler) HandleGetPlayers(w http.ResponseWriter, r *http.Request) {
-	players, err := h.mc.GetWhitelist()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(players)
 }
 
 func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {

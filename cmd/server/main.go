@@ -21,12 +21,12 @@ import (
 
 func main() {
 	cfg := config.Load()
-	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM)
 	store, err := database.NewSQLiteStore(cfg.DBName)
 	if err != nil {
 		log.Fatalf("CRITICAL ERROR, %v", err)
 	}
 	defer store.Close()
+	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM, store)
 
 	// --- BOOTSTRA ADMIN USER ----
 	// IF ADMIN_PASS is ser, ensure the user exists
@@ -82,11 +82,28 @@ func main() {
 		"GET /status": mcHandler.HandleStatus,
 		"GET /logs":   mcHandler.HandleLogs,
 		"GET /config": mcHandler.GetConfig,
-		// The webSocket Endpoint
-		"GET /ws": mcHandler.SocketHandler,
+		"GET /ws":     mcHandler.SocketHandler,
+
+		// Player Manager - WhiteList
+		"GET /api/players":    mcHandler.HandleGetPlayers,
+		"POST /api/players":   mcHandler.HandleAddPlayer,
+		"DELETE /api/players": mcHandler.HandleRemovePlayer,
+
+		// Player Manager - Banned
+		"GET /api/players/banned":    mcHandler.HandleGetBanned,
+		"POST /api/players/banned":   mcHandler.HandleBanPlayer,
+		"DELETE /api/players/banned": mcHandler.HandleUnbanPlayer,
+
+		// Player Manager - Ops
+		"GET /api/players/ops":  mcHandler.HandleGetOps,
+		"POST /api/players/ops": mcHandler.HandleOpPlayer, // ?action=add|remove
+
+		// Player Manager - Rejected (DB)
+		"GET /api/players/rejected":    mcHandler.HandleGetRejected,
+		"DELETE /api/players/rejected": mcHandler.HandleDeleteRejected,
 
 		"POST /command":       mcHandler.SendCommand,
-		"POST /whitelist_add": mcHandler.Whitelisting,
+		"POST /whitelist_add": mcHandler.WhiteListing,
 		"POST /start":         mcHandler.Start,
 		"POST /stop":          mcHandler.Stop,
 		"POST /config":        mcHandler.PostConfig,

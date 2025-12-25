@@ -26,7 +26,7 @@ type Store interface {
 	CreateUser(user *User) error
 
 	//Player Intelligence
-	UpsertRrejectedPlayer(username string) error
+	UpsertRejectedPlayer(username string) error
 	GetRejectedPlayers() ([]RejectedPlayer, error)
 	DeleteRejectedPlayer(username string) error
 }

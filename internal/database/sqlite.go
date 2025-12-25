@@ -42,17 +42,17 @@ func (s *SQLiteStore) Migrate() error {
 			username TEXT NOT NULL,
 			password TEXT NOT NULL,
 			role TEXT NOT NULL
-		)`
+		);`
 
 	if _, err := s.db.Exec(SQL); err != nil {
 		return err
 	}
 
 	// 2. Rejected Players table
-	queryRejected := `CREATE TABLE IF NOT EXISTS rejected_palyers (
+	queryRejected := `CREATE TABLE IF NOT EXISTS rejected_players (
 		username TEXT PRIMARY KEY,
 		count INTEGER DEFAULT 1,
-		last_sean DATETIME DEFAULT CURRENT_TIMESTAMP
+		last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, err := s.db.Exec(queryRejected)
 	return err
@@ -84,24 +84,24 @@ func (s *SQLiteStore) Close() error {
 
 func (s *SQLiteStore) UpsertRejectedPlayer(username string) error {
 	// If exist, update count and time. If not INSERT
-	SQL := `INSERT INTO rejected_players (username, count, last_sean)
-			VALUE (?, 1, CURRENT_TIMESTAMP)
-			ON CONFLICT(username) DO UPDATE SELECT
-				count = count + 1
-				last_sean = CURRENT_TIMESTAMP`
-	_, err := s.db.Exec(SQL)
+	SQL := `INSERT INTO rejected_players (username, count, last_seen)
+			VALUES (?, 1, CURRENT_TIMESTAMP)
+			ON CONFLICT(username) DO UPDATE SET
+				count = count + 1,
+				last_seen = CURRENT_TIMESTAMP;`
+	_, err := s.db.Exec(SQL, username)
 	return err
 }
 
 func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
-	SQL := `SELECT username, count, last_sean FROM rejected_players ORDER BY last_sean DESC LIMIT 50`
+	SQL := `SELECT username, count, last_seen FROM rejected_players ORDER BY last_seen DESC LIMIT 50`
 	rows, err := s.db.Query(SQL)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var list []RejectedPlayer
+	list := []RejectedPlayer{}
 	for rows.Next() {
 		var p RejectedPlayer
 		var t string
@@ -120,7 +120,7 @@ func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
 	return list, nil
 }
 
-func (s *SQLiteStore) DeleteRejectePlayer(username string) error {
+func (s *SQLiteStore) DeleteRejectedPlayer(username string) error {
 	SQL := `DELETE FROM rejected_players WHERE username = ?`
 	_, err := s.db.Exec(SQL, username)
 	return err

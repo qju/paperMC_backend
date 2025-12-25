@@ -2,10 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import DashboardLayout from './layouts/DashboardLayout';
 import Console from './pages/Console';
+import Players from './pages/Players';
 import type { JSX } from 'react';
 
 // Placeholder Pages (We will build these one by one)
-const PlayersPage = () => <h1 className="text-2xl font-pixel text-mc-gold">Player Management</h1>;
+//const Players = () => <h1 className="text-2xl font-pixel text-mc-gold">Player Management</h1>;
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
     const token = localStorage.getItem('token');
@@ -26,7 +27,7 @@ function App() {
                     </ProtectedRoute>
                 }>
                     <Route index element={<Console />} />
-                    <Route path="players" element={<PlayersPage />} />
+                    <Route path="players" element={<Players />} />
                     {/* Add Config, Backups later */}
                 </Route>
             </Routes>

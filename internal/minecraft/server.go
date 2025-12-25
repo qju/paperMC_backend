@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -47,12 +48,13 @@ func (s Status) String() string {
 
 type Server struct {
 	// Public fields
-	WorkDir    string
-	JarFile    string
-	RAM        string
-	Args       []string
-	LogChan    chan string
-	LogHistory []string
+	WorkDir       string
+	JarFile       string
+	RAM           string
+	Args          []string
+	LogChan       chan string
+	LogHistory    []string
+	OnlinePlayers map[string]bool
 
 	// Private fields
 	store  database.Store
@@ -65,11 +67,18 @@ type Server struct {
 }
 
 type Vitals struct {
-	Status      Status  `json:"status"`
-	CPU         float64 `json:"cpu"`
-	RAM         uint64  `json:"ram"`
-	TotalMemory string  `json:"total_memory"`
-	Players     int     `json:"players"`
+	Status      Status   `json:"status"`
+	CPU         float64  `json:"cpu"`
+	RAM         uint64   `json:"ram"`
+	TotalMemory string   `json:"total_memory"`
+	PlayerCount int      `json:"player_count"`
+	PlayerList  []string `json:"player_list"`
+}
+
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func CleanString(input string) string {
+	return strings.TrimSpace(ansiRegex.ReplaceAllString(input, ""))
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
@@ -143,10 +152,16 @@ func (s *Server) GetVitals() Vitals {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	onlineList := make([]string, 0, len(s.OnlinePlayers))
+	for name := range s.OnlinePlayers {
+		onlineList = append(onlineList, name)
+	}
+
 	vitals := Vitals{
 		Status:      s.status,
 		TotalMemory: s.RAM,
-		Players:     0, // Placeholder
+		PlayerCount: len(onlineList),
+		PlayerList:  onlineList,
 	}
 
 	// 1. If Server is not running, returm basic status (0 CPU/RAM)
@@ -177,8 +192,19 @@ func (s *Server) StreamLogs() {
 	for scanner.Scan() {
 		text := scanner.Text()
 		s.Broadcast("[MC] " + text)
-		if strings.Contains(text, "You are not white-listed on this server") {
+		// Check for players not on WhiteList trying to connect
+		if strings.Contains(text, "): You are not whitelisted on this server!") {
 			go s.handleRejection(text)
+		}
+
+		// Check for players joining
+		if strings.Contains(text, " joined the game") {
+			go s.handleSessionChange(text, true)
+		}
+
+		// Check for players leaving
+		if strings.Contains(text, " left the game") {
+			go s.handleSessionChange(text, false)
 		}
 	}
 
@@ -189,7 +215,7 @@ func (s *Server) StreamLogs() {
 
 func (s *Server) handleRejection(logLine string) {
 	// Line format example:
-	//[11:57:02] [Server thread/INFO]: Bob lost connection: Disconnected
+	//[13:09:40 INFO]: Disconnecting Bob (/ip:port): You are not whitelisted on this server!
 	//
 	// 1. Extract Username
 	// Split by ": "
@@ -203,15 +229,41 @@ func (s *Server) handleRejection(logLine string) {
 	if len(subParts) < 3 {
 		return
 	}
-	username := strings.TrimSpace(subParts[0])
+	username := CleanString(subParts[1])
 
 	// 2. Persist to DB
 	if username != "" {
-		// 3. Check if white-listed
-		fmt.Printf("[System] Detected blocked player: %s. Saving to DB.\n", username)
-		if err := s.store.UpsertRrejectedPlayer(username); err != nil {
-			fmt.Printf("[Error] Failed to save rejected player: %v\n", err)
+		s.Broadcast("[WARN] Detected blocked player. Saving to DB user: " + username)
+		if err := s.store.UpsertRejectedPlayer(username); err != nil {
+			s.Broadcast("[Error] Failed to save rejected player: " + err.Error())
 		}
+	}
+}
+
+func (s *Server) handleSessionChange(logLine string, joining bool) {
+	parts := strings.Split(logLine, "]: ")
+	if len(parts) < 2 {
+		return
+	}
+	message := parts[1]
+
+	words := strings.Split(message, " ")
+	if len(words) < 4 {
+		return
+	}
+
+	username := CleanString(words[0])
+	if username == "" {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if joining {
+		s.OnlinePlayers[username] = true
+	} else {
+		delete(s.OnlinePlayers, username)
 	}
 }
 
@@ -272,13 +324,14 @@ func (s *Server) GetStatus() Status {
 
 func NewServer(workDir string, jarFile string, ram string, store database.Store) *Server {
 	return &Server{
-		WorkDir:    workDir,
-		JarFile:    jarFile,
-		RAM:        ram,
-		LogChan:    make(chan string),
-		LogHistory: make([]string, 0),
-		status:     StatusStopped,
-		store:      store,
+		WorkDir:       workDir,
+		JarFile:       jarFile,
+		RAM:           ram,
+		LogChan:       make(chan string),
+		LogHistory:    make([]string, 0),
+		status:        StatusStopped,
+		store:         store,
+		OnlinePlayers: make(map[string]bool),
 
 		Args: []string{},
 	}

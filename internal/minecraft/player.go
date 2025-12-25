@@ -16,14 +16,19 @@ type Player struct {
 	Source  string `json:"source,omitempty"`
 	Expires string `json:"expires,omitempty"`
 	Reason  string `json:"reason,omitempty"`
+	Level   int    `json:"level,omitempty"`
 }
 
-func (s *Server) GetWhitelist() ([]Player, error) {
+func (s *Server) GetWhiteList() ([]Player, error) {
 	return s.readPlayerFile("whitelist.json")
 }
 
 func (s *Server) GetBanned() ([]Player, error) {
 	return s.readPlayerFile("banned-players.json")
+}
+
+func (s *Server) GetOps() ([]Player, error) {
+	return s.readPlayerFile("ops.json")
 }
 
 func (s *Server) readPlayerFile(filename string) ([]Player, error) {
@@ -43,7 +48,6 @@ func (s *Server) readPlayerFile(filename string) ([]Player, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	// 3. Parse JSON
 	var players []Player
 	if err := json.Unmarshal(data, &players); err != nil {
@@ -83,6 +87,21 @@ func (s *Server) RemoveWhitelist(username string) error {
 	return nil
 }
 
-func Ban(username string, reason string) {
+func (s *Server) BanUser(username string, reason string) error {
+	if reason == "" {
+		reason = "Banned by Operator"
+	}
+	return s.SendCommand(fmt.Sprintf("ban %s %s", username, reason))
+}
 
+func (s *Server) UnbanUser(username string) error {
+	return s.SendCommand("pardon " + username)
+}
+
+func (s *Server) OpUser(username string) error {
+	return s.SendCommand("op " + username)
+}
+
+func (s *Server) DeopUser(username string) error {
+	return s.SendCommand("deop " + username)
 }
