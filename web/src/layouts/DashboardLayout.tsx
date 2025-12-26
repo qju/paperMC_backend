@@ -8,7 +8,8 @@ interface Vitals {
     cpu: number;
     ram: number;        // in Bytes (RSS)
     total_memory: string; // e.g., "4G", "1024M"
-    players: number;
+    player_count: number;
+    player_list: Array<{ name: string; uuid: string }>;
 }
 
 export default function DashboardLayout() {
@@ -184,15 +185,30 @@ export default function DashboardLayout() {
                         ></div>
                     </div>
                 </div>
-
-                {/* PLAYERS (Placeholder for Milestone 3.1) */}
-                <div className="flex-1 bg-black/40 border border-white/10 p-4 rounded-lg flex flex-col">
+                {/* ACTIVE PLAYERS LIST */}
+                <div className="flex-1 bg-black/40 border border-white/10 p-4 rounded-lg flex flex-col min-h-0">
                     <div className="text-xs text-white/50 mb-3 uppercase tracking-wider flex justify-between">
                         <span>Online Players</span>
-                        <span>{vitals?.players || 0}</span>
+                        <span className="text-mc-green font-mono">{vitals?.player_count || 0}</span>
                     </div>
-                    <div className="text-white/30 text-xs italic text-center mt-4">
-                        Player list coming in Milestone 3.1
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                        {vitals?.player_list && vitals.player_list.length > 0 ? (
+                            vitals.player_list.map(player => (
+                                <div key={player.name} className="flex items-center gap-3 bg-white/5 p-2 rounded border border-white/5 hover:bg-white/10 transition-colors">
+                                    <img
+                                        src={`https://api.mineatar.io/face/${player.uuid}`}
+                                        alt={player.name}
+                                        className="w-6 h-6 rounded bg-black/50"
+                                    />
+                                    <span className="text-sm font-mono text-white/90">{player.name}</span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="flex h-full items-center justify-center text-white/20 text-xs italic">
+                                No players online
+                            </div>
+                        )}
                     </div>
                 </div>
 

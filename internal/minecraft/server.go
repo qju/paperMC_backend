@@ -54,9 +54,11 @@ type Server struct {
 	Args          []string
 	LogChan       chan string
 	LogHistory    []string
-	OnlinePlayers map[string]bool
+	OnlinePlayers map[string]Player
 
 	// Private fields
+	uuidCache map[string]string
+
 	store  database.Store
 	cmd    *exec.Cmd
 	mu     sync.Mutex
@@ -72,9 +74,10 @@ type Vitals struct {
 	RAM         uint64   `json:"ram"`
 	TotalMemory string   `json:"total_memory"`
 	PlayerCount int      `json:"player_count"`
-	PlayerList  []string `json:"player_list"`
+	PlayerList  []Player `json:"player_list"`
 }
 
+var uuidLogRegex = regexp.MustCompile(`UUID of player (.+) is ([0-9a-fA-F\-]+)`)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func CleanString(input string) string {
@@ -152,9 +155,9 @@ func (s *Server) GetVitals() Vitals {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	onlineList := make([]string, 0, len(s.OnlinePlayers))
-	for name := range s.OnlinePlayers {
-		onlineList = append(onlineList, name)
+	onlineList := make([]Player, 0, len(s.OnlinePlayers))
+	for _, p := range s.OnlinePlayers {
+		onlineList = append(onlineList, p)
 	}
 
 	vitals := Vitals{
@@ -192,9 +195,19 @@ func (s *Server) StreamLogs() {
 	for scanner.Scan() {
 		text := scanner.Text()
 		s.Broadcast("[MC] " + text)
-		// Check for players not on WhiteList trying to connect
-		if strings.Contains(text, "): You are not whitelisted on this server!") {
-			go s.handleRejection(text)
+
+		cleanText := CleanString(text)
+
+		// Capture UUID
+		if strings.Contains(cleanText, "UUID of player") {
+			matches := uuidLogRegex.FindStringSubmatch(cleanText)
+			if len(matches) == 3 {
+				name := matches[1]
+				uuid := matches[2]
+				s.mu.Lock()
+				s.uuidCache[name] = uuid
+				s.mu.Unlock()
+			}
 		}
 
 		// Check for players joining
@@ -205,6 +218,11 @@ func (s *Server) StreamLogs() {
 		// Check for players leaving
 		if strings.Contains(text, " left the game") {
 			go s.handleSessionChange(text, false)
+		}
+
+		// Check for players not on WhiteList trying to connect
+		if strings.Contains(text, "): You are not whitelisted on this server!") {
+			go s.handleRejection(text)
 		}
 	}
 
@@ -261,7 +279,15 @@ func (s *Server) handleSessionChange(logLine string, joining bool) {
 	defer s.mu.Unlock()
 
 	if joining {
-		s.OnlinePlayers[username] = true
+		uuid, exist := s.uuidCache[username]
+		if !exist {
+			uuid = ""
+		}
+		s.OnlinePlayers[username] = Player{
+			UserName: username,
+			UUID:     uuid,
+		}
+		delete(s.uuidCache, username)
 	} else {
 		delete(s.OnlinePlayers, username)
 	}
@@ -331,7 +357,8 @@ func NewServer(workDir string, jarFile string, ram string, store database.Store)
 		LogHistory:    make([]string, 0),
 		status:        StatusStopped,
 		store:         store,
-		OnlinePlayers: make(map[string]bool),
+		OnlinePlayers: make(map[string]Player),
+		uuidCache:     make(map[string]string),
 
 		Args: []string{},
 	}

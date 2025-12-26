@@ -1,16 +1,37 @@
 import { useEffect, useState } from 'react';
-import { Shield, ShieldAlert, Trash2, UserPlus, UserCheck, UserX, AlertTriangle, Play, RefreshCw, Ban } from 'lucide-react';
+import { Shield, ShieldAlert, Trash2, UserPlus, UserCheck, UserX, AlertTriangle, Play, RefreshCw, Ban, XCircle, CheckCircle } from 'lucide-react';
 import type { Player, RejectedPlayer, UnifiedPlayer } from '../types';
 
+// 1. Toast Interface
+interface Toast {
+    id: number;
+    message: string;
+    type: 'success' | 'error';
+}
+
 export default function Players() {
-    // Raw Data State
+    // Data State
     const [whitelist, setWhitelist] = useState<Player[]>([]);
     const [banned, setBanned] = useState<Player[]>([]);
     const [ops, setOps] = useState<Player[]>([]);
     const [rejected, setRejected] = useState<RejectedPlayer[]>([]);
-    const [onlineNames, setOnlineNames] = useState<string[]>([]);
+    const [onlinePlayers, setOnlinePlayers] = useState<Player[]>([]);
+
+    // UI State
     const [loading, setLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [toasts, setToasts] = useState<Toast[]>([]); // <--- NEW: Toast State
+
+    // --- TOAST HELPER ---
+    const showToast = (message: string, type: 'success' | 'error') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 3000);
+    };
 
     // --- FETCH DATA ---
     useEffect(() => {
@@ -24,20 +45,20 @@ export default function Players() {
                     fetch('/api/players/banned', { headers }),
                     fetch('/api/players/ops', { headers }),
                     fetch('/api/players/rejected', { headers }),
-                    fetch('/status', { headers }) // For online list
+                    fetch('/status', { headers })
                 ]);
 
                 if (resWhite.ok) setWhitelist(await resWhite.json());
                 if (resBan.ok) setBanned(await resBan.json());
                 if (resOp.ok) setOps(await resOp.json());
                 if (resRej.ok) setRejected(await resRej.json());
-
                 if (resStatus.ok) {
                     const statusData = await resStatus.json();
-                    setOnlineNames(statusData.player_list || []);
+                    setOnlinePlayers(statusData.player_list || []);
                 }
             } catch (error) {
-                console.error("Failed to fetch player data", error);
+                console.error("Failed to fetch data", error);
+                // We don't toast here to avoid spamming on load errors
             } finally {
                 setLoading(false);
             }
@@ -47,18 +68,44 @@ export default function Players() {
 
     const refresh = () => setRefreshTrigger(prev => prev + 1);
 
-    // --- ACTIONS ---
+    // --- ACTIONS (UPDATED) ---
     const apiCall = async (url: string, method: string, body?: Record<string, unknown>) => {
         const token = localStorage.getItem('token');
-        await fetch(url, {
-            method,
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: body ? JSON.stringify(body) : undefined
-        });
-        refresh();
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: body ? JSON.stringify(body) : undefined
+            });
+
+            // 1. Capture the Server Response
+            let message = "";
+            const text = await res.text();
+
+            try {
+                // Try to parse JSON { "status": "..." }
+                const data = JSON.parse(text);
+                message = data.status || text;
+            } catch {
+                // Fallback to plain text
+                message = text;
+            }
+
+            // 2. Determine Success or Failure
+            if (res.ok) {
+                showToast(message || "Action Successful", 'success');
+                refresh(); // Only refresh data on success
+            } else {
+                showToast(message || "Action Failed", 'error');
+            }
+
+        } catch (err) {
+            console.error("API Call Failed: ", err);
+            showToast("Network Error: Could not reach server", 'error');
+        }
     };
 
     const handleWhitelist = (name: string, add: boolean) => {
@@ -85,12 +132,11 @@ export default function Players() {
     };
 
     // --- MERGE LOGIC ---
-    // Create a Set of all unique names from all sources
     const allNames = new Set<string>([
         ...whitelist.map(p => p.name),
         ...banned.map(p => p.name),
         ...ops.map(p => p.name),
-        ...onlineNames,
+        ...onlinePlayers.map(p => p.name),
         ...rejected.map(p => p.username)
     ]);
 
@@ -99,28 +145,45 @@ export default function Players() {
         const b = banned.find(p => p.name === name);
         const o = ops.find(p => p.name === name);
         const r = rejected.find(p => p.username === name);
-        const on = onlineNames.includes(name);
+        const onlineP = onlinePlayers.find(p => p.name === name);
 
         return {
             name,
-            uuid: w?.uuid || b?.uuid || o?.uuid,
+            uuid: w?.uuid || onlineP?.uuid || o?.uuid || b?.uuid,
             isWhitelisted: !!w,
             isBanned: !!b,
             isOp: !!o,
-            isOnline: on,
+            isOnline: !!onlineP,
             isRejected: !!r,
             reason: b?.reason,
             rejectionCount: r?.count
         };
     }).sort((a, b) => {
-        // Sort priority: Online > Rejected > Whitelisted > Others
         if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
         if (a.isRejected !== b.isRejected) return a.isRejected ? -1 : 1;
         return a.name.localeCompare(b.name);
     });
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative min-h-[500px]">
+
+            {/* TOAST CONTAINER (Fixed Bottom Right) */}
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+                {toasts.map(toast => (
+                    <div
+                        key={toast.id}
+                        className={`
+                            flex items-center gap-3 px-4 py-3 rounded shadow-lg border backdrop-blur-md animate-slide-in
+                            ${toast.type === 'success'
+                                ? 'bg-green-900/80 border-green-500/50 text-green-100'
+                                : 'bg-red-900/80 border-red-500/50 text-red-100'}
+                        `}
+                    >
+                        {toast.type === 'success' ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                        <span className="font-mono text-sm">{toast.message}</span>
+                    </div>
+                ))}
+            </div>
 
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
@@ -133,7 +196,7 @@ export default function Players() {
                 </button>
             </div>
 
-            {/* QUICK ACTIONS / REJECTED PLAYERS */}
+            {/* REJECTED PLAYERS */}
             {rejected.length > 0 && (
                 <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4 mb-6">
                     <h3 className="text-red-400 font-pixel text-lg mb-3 flex items-center gap-2">
@@ -186,7 +249,7 @@ export default function Players() {
                                 <td className="p-4">
                                     <div className="flex items-center gap-3">
                                         <img
-                                            src={`https://api.mineatar.io/face/${player.name}`}
+                                            src={`https://api.mineatar.io/face/${player.uuid || player.name}`}
                                             alt={player.name}
                                             className="w-8 h-8 rounded bg-black/50"
                                         />
@@ -230,8 +293,6 @@ export default function Players() {
                                 </td>
                                 <td className="p-4 text-right">
                                     <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-
-                                        {/* Whitelist Toggle */}
                                         <button
                                             onClick={() => handleWhitelist(player.name, !player.isWhitelisted)}
                                             title={player.isWhitelisted ? "Remove from Whitelist" : "Whitelist"}
@@ -239,8 +300,6 @@ export default function Players() {
                                         >
                                             {player.isWhitelisted ? <UserX size={18} /> : <UserPlus size={18} />}
                                         </button>
-
-                                        {/* OP Toggle */}
                                         <button
                                             onClick={() => handleOp(player.name, !player.isOp)}
                                             title={player.isOp ? "De-Op" : "Make Operator"}
@@ -248,8 +307,6 @@ export default function Players() {
                                         >
                                             {player.isOp ? <ShieldAlert size={18} /> : <Shield size={18} />}
                                         </button>
-
-                                        {/* Ban Toggle */}
                                         <button
                                             onClick={() => handleBan(player.name, !player.isBanned)}
                                             title={player.isBanned ? "Unban" : "Ban Player"}
@@ -257,7 +314,6 @@ export default function Players() {
                                         >
                                             {player.isBanned ? <Play size={18} /> : <Ban size={18} />}
                                         </button>
-
                                     </div>
                                 </td>
                             </tr>
