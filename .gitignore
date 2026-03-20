@@ -1,6 +1,7 @@
 paperMC/
 paperMS/
 .vscode/
+bin/
 
 server.properties
 *.csv
