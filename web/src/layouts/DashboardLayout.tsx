@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Terminal, Users, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap } from 'lucide-react';
+import { Terminal, Users, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap, Globe } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
 // 1. Define the Shape of the API Response
@@ -10,6 +10,7 @@ interface Vitals {
     total_memory: string; // e.g., "4G", "1024M"
     player_count: number;
     player_list: Array<{ name: string; uuid: string }>;
+    active_world: string;
 }
 
 export default function DashboardLayout() {
@@ -109,6 +110,7 @@ export default function DashboardLayout() {
                 <nav className="flex-1 p-4 space-y-2 mt-16 md:mt-0">
                     <NavItem to="/" icon={<Terminal size={20} />} label="Console" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/players" icon={<Users size={20} />} label="Players" onClick={() => setMobileMenuOpen(false)} />
+                    <NavItem to="/worlds" icon={<Globe size={20} />} label="Worlds" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/config" icon={<Settings size={20} />} label="Server Config" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/backups" icon={<HardDrive size={20} />} label="Backups" onClick={() => setMobileMenuOpen(false)} />
                 </nav>
@@ -137,6 +139,16 @@ export default function DashboardLayout() {
                 <div className="flex items-center gap-2 mb-2 text-mc-gold font-pixel text-xl">
                     <Activity size={20} />
                     <span>Server Vitals</span>
+                </div>
+
+                {/* ACTIVE WORLD */}
+                <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
+                    <div className="text-xs text-white/50 mb-1 uppercase tracking-wider flex items-center gap-2">
+                        <Globe size={14} /> Active World
+                    </div>
+                    <div className="font-mono text-lg text-mc-diamond truncate">
+                        {vitals?.active_world || "Loading..."}
+                    </div>
                 </div>
 
                 {/* STATUS */}

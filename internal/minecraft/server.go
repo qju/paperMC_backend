@@ -10,6 +10,7 @@ package minecraft
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,7 @@ const (
 	StatusStopped  Status = iota // 0
 	StatusStarting               // 1
 	StatusRunning                // 2
+	StatusStopping               // 3
 )
 
 const FloodgatePrefix = "."
@@ -41,6 +43,8 @@ func (s Status) String() string {
 		return "Starting"
 	case StatusRunning:
 		return "Running"
+	case StatusStopping:
+		return "Stopping"
 	default:
 		return "Unknown"
 	}
@@ -61,11 +65,12 @@ type Server struct {
 
 	store  database.Store
 	cmd    *exec.Cmd
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	status Status
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	proc   *process.Process
+	cancel context.CancelFunc
 }
 
 type Vitals struct {
@@ -75,6 +80,7 @@ type Vitals struct {
 	TotalMemory string   `json:"total_memory"`
 	PlayerCount int      `json:"player_count"`
 	PlayerList  []Player `json:"player_list"`
+	ActiveWorld string   `json:"active_world"`
 }
 
 var uuidLogRegex = regexp.MustCompile(`UUID of player (.+) is ([0-9a-fA-F\-]+)`)
@@ -93,65 +99,98 @@ func (s Status) MarshalText() ([]byte, error) {
 func (s *Server) Start() error {
 	// Try Lock the server Mutex immediately
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	// Check if server is already running if not return an error
-	if s.status == StatusRunning {
-		return errors.New("Server is already running")
+	if s.status != StatusStopped {
+		s.mu.Unlock()
+		return errors.New("Server Status is not Stopped. Aborting start")
 	}
-	s.cmd = exec.Command("java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
+	// Creating the context for exec.CommandContext
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+
+	s.status = StatusStarting
+	s.cmd = exec.CommandContext(ctx, "java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
 	s.cmd.Dir = s.WorkDir
 
 	pipeIn, errIn := s.cmd.StdinPipe()
 	if errIn != nil {
+		s.mu.Unlock()
 		return errIn
 	}
 	s.stdin = pipeIn
 
 	pipeOut, errOut := s.cmd.StdoutPipe()
 	if errOut != nil {
+		s.mu.Unlock()
 		return errOut
 	}
 	s.stdout = pipeOut
 
 	if err := s.cmd.Start(); err != nil {
-		return err
-	}
-	// 2. Create process inspector
-	var err error
-	s.proc, err = process.NewProcess(int32(s.cmd.Process.Pid))
-	if err != nil {
-		s.cmd.Process.Kill()
-		return err
-	}
-
-	s.status = StatusRunning
-	go s.StreamLogs()
-	return nil
-}
-
-func (s *Server) Stop() error {
-	if s.GetStatus() == StatusStopped {
-		return errors.New("server already stopped")
-	}
-	s.SendCommand("stop")
-	if err := s.cmd.Wait(); err != nil {
-		s.mu.Lock()
-		s.proc = nil
-		s.status = StatusStopped
 		s.mu.Unlock()
 		return err
 	}
 
-	s.mu.Lock()
-	s.proc = nil
-	s.status = StatusStopped
+	s.status = StatusRunning
 	s.mu.Unlock()
+
+	go s.monitorProcess()
+	go s.StreamLogs()
 
 	return nil
 }
 
+func (s *Server) Kill() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.status == StatusStopped {
+		return errors.New("Server is already stopped")
+	}
+
+	if s.cancel == nil {
+		return errors.New("fatal: cancel function is nil but server is not stopped")
+	}
+
+	s.cancel()
+	return nil
+}
+
+func (s *Server) Stop() error {
+	s.mu.Lock()
+	if s.status != StatusRunning {
+		s.mu.Unlock()
+		return errors.New("server is not running")
+	}
+	s.status = StatusStopping
+	s.mu.Unlock()
+
+	if err := s.SendCommand("stop"); err != nil {
+		s.Kill()
+		return fmt.Errorf("failed to send stop command, forcing kill: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) monitorProcess() {
+	var err error
+	s.proc, err = process.NewProcess(int32(s.cmd.Process.Pid))
+	if err != nil {
+		s.cmd.Process.Kill()
+	}
+
+	s.cmd.Wait()
+
+	s.mu.Lock()
+	s.status = StatusStopped
+	s.proc = nil
+	s.mu.Unlock()
+
+	s.cancel()
+}
+
 func (s *Server) GetVitals() Vitals {
-	// ToDo: if satus failes in front end add Text Marshal
+	// ToDo: if status fails in front end add Text Marshal
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -167,7 +206,7 @@ func (s *Server) GetVitals() Vitals {
 		PlayerList:  onlineList,
 	}
 
-	// 1. If Server is not running, returm basic status (0 CPU/RAM)
+	// 1. If Server is not running, return basic status (0 CPU/RAM)
 	if s.cmd == nil || s.cmd.Process == nil || s.status != StatusRunning {
 		return vitals
 	}
