@@ -38,17 +38,30 @@ export default function Users() {
         }, 3500);
     };
 
+    const safeParseJSON = async (res: Response) => {
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch {
+            return null;
+        }
+    };
+
     const fetchUsers = async () => {
         const token = localStorage.getItem('token');
         try {
             const res = await fetch('/api/users', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            const data = await safeParseJSON(res);
+            if (data === null) {
+                showToast("Backend returned invalid response. Please restart the backend server.", 'error');
+                return;
+            }
             if (res.ok) {
-                const data = await res.json();
                 setUsers(Array.isArray(data) ? data : []);
             } else {
-                showToast("Failed to fetch users", 'error');
+                showToast(data.error || "Failed to fetch users", 'error');
             }
         } catch (err) {
             console.error("Failed to load users", err);
@@ -82,7 +95,12 @@ export default function Users() {
                 })
             });
 
-            const data = await res.json();
+            const data = await safeParseJSON(res);
+            if (data === null) {
+                showToast("Backend returned invalid response. Please restart backend server.", 'error');
+                return;
+            }
+
             if (res.ok) {
                 showToast(`User "${newUsername.trim()}" created successfully`, 'success');
                 setShowCreateModal(false);
@@ -120,7 +138,12 @@ export default function Users() {
                 })
             });
 
-            const data = await res.json();
+            const data = await safeParseJSON(res);
+            if (data === null) {
+                showToast("Backend returned invalid response. Please restart backend server.", 'error');
+                return;
+            }
+
             if (res.ok) {
                 showToast(`Password for "${resetTargetUser}" updated`, 'success');
                 setResetTargetUser(null);
@@ -148,7 +171,12 @@ export default function Users() {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            const data = await res.json();
+            const data = await safeParseJSON(res);
+            if (data === null) {
+                showToast("Backend returned invalid response. Please restart backend server.", 'error');
+                return;
+            }
+
             if (res.ok) {
                 showToast(`User "${username}" deleted`, 'success');
                 fetchUsers();
