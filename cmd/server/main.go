@@ -115,8 +115,11 @@ func main() {
 		"POST /api/updater/apply":   mcHandler.HandleUpdate,
 
 		// Worlds
-		"GET /api/worlds":          mcHandler.HandleGetWorlds,
-		"POST /api/worlds/active":  mcHandler.HandleSetActiveWorld,
+		"GET /api/worlds":            mcHandler.HandleGetWorlds,
+		"POST /api/worlds/active":    mcHandler.HandleSetActiveWorld,
+		"POST /api/worlds/create":    mcHandler.HandleCreateWorld,
+		"POST /api/worlds/duplicate": mcHandler.HandleDuplicateWorld,
+		"DELETE /api/worlds":         mcHandler.HandleDeleteWorld,
 	}
 
 	// Register all the protected routes
