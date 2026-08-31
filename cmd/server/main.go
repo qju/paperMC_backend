@@ -28,12 +28,12 @@ func main() {
 	defer store.Close()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM, store)
 
-	// --- BOOTSTRA ADMIN USER ----
+	// --- BOOTSTRAP ADMIN USER ----
 	// IF ADMIN_PASS is ser, ensure the user exists
 	if cfg.AdminPass != "" {
 		_, err := store.GetUser(cfg.AdminUser)
 		if err == nil {
-			// User likely doesn't exist in database, let's creat it
+			// User likely doesn't exist in database, let's create it
 			log.Printf("[Init] User '%s' not found. Creating...", cfg.AdminUser)
 		} else if err == sql.ErrNoRows {
 			hashedPass, hashErr := auth.HashPassword(cfg.AdminPass)
@@ -48,7 +48,7 @@ func main() {
 				if createErr := store.CreateUser(adminUser); createErr != nil {
 					log.Printf("[Init] Failed to create AdminUser: %c", createErr)
 				} else {
-					log.Printf("[Init] AdminUser '%s' ceated successfully!", cfg.AdminUser)
+					log.Printf("[Init] AdminUser '%s' created successfully!", cfg.AdminUser)
 				}
 			}
 		} else {
@@ -56,13 +56,13 @@ func main() {
 		}
 
 	} else {
-		log.Printf("[Init] Warning: ADMIN_PASS is mepty. No admin user created")
+		log.Printf("[Init] Warning: ADMIN_PASS is empty. No admin user created")
 	}
 
 	mcHandler := api.NewServerHandler(mcServer, store)
 	mux := http.NewServeMux()
 
-	// Prepare the forwared Files
+	// Prepare the forwarded Files
 	distFS, err := fs.Sub(web.DistFs, "dist")
 	if err != nil {
 		log.Fatalf("Failed to load embedded frontend: %v", err)
@@ -106,8 +106,13 @@ func main() {
 		"POST /whitelist_add": mcHandler.WhiteListing,
 		"POST /start":         mcHandler.Start,
 		"POST /stop":          mcHandler.Stop,
+		"POST /kill":          mcHandler.Kill,
 		"POST /config":        mcHandler.PostConfig,
 		"POST /update":        mcHandler.HandleUpdate,
+
+		// Worlds
+		"GET /api/worlds":          mcHandler.HandleGetWorlds,
+		"POST /api/worlds/active":  mcHandler.HandleSetActiveWorld,
 	}
 
 	// Register all the protected routes
@@ -116,7 +121,7 @@ func main() {
 	}
 
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// try to server the requested file (e.g., /assers/style.css)
+		// try to server the requested file (e.g., /assets/style.css)
 		path := strings.TrimPrefix(r.URL.Path, "/")
 
 		file, err := distFS.Open(path)

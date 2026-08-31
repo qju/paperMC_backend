@@ -11,6 +11,7 @@ import (
 	"paperMC_backend/internal/minecraft"
 	"paperMC_backend/internal/updater"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -18,6 +19,48 @@ type Handler struct {
 	mc       *minecraft.Server
 	updateMu sync.Mutex
 	store    database.Store
+	hub      *Hub
+}
+
+type StatusResponse struct {
+	Status string `json:"status"`
+}
+
+type CommandRequest struct {
+	Command string `json:"command"`
+}
+
+type UpdateRequest struct {
+	Version string `json:"version"`
+}
+
+// HELPER Functions
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	respondWithJSON(w, code, map[string]string{"error": message})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(payload)
+}
+
+func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler {
+	hub := NewHub()
+	go hub.Run()
+
+	h := &Handler{
+		mc:       mcServer,
+		updateMu: sync.Mutex{},
+		store:    store,
+		hub:      hub,
+	}
+
+	mcServer.AddListener(func(msg string) {
+		h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
+	})
+
+	return h
 }
 
 func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
@@ -35,28 +78,16 @@ func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
 
 }
 
-func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler {
-	return &Handler{
-		mc:       mcServer,
-		updateMu: sync.Mutex{},
-		store:    store,
-	}
-}
-
-type StatusResponse struct {
-	Status string `json:"status"`
-}
-
-type CommandRequest struct {
-	Command string `json:"command"`
-}
-
-type UpdateRequest struct {
-	Version string `json:"version"`
-}
-
 func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	vitals := h.mc.GetVitals()
+
+	props, err := config.LoadProperties(h.mc.WorkDir)
+	if err == nil {
+		vitals.ActiveWorld = props["level-name"]
+	}
+	if vitals.ActiveWorld == "" {
+		vitals.ActiveWorld = "world" // fallback
+	}
 
 	// 2. Send as JSON
 	w.Header().Set("Content-type", "application/json")
@@ -107,25 +138,43 @@ func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
-
-	if err := h.mc.Start(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	err := h.mc.Start()
+	if err != nil {
+		// Differentiate between State conflicts (400) and OS errors (500)
+		if strings.Contains(err.Error(), "Status is not") {
+			respondWithError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Failed to start server"+err.Error())
 		return
 	}
-	response := StatusResponse{Status: "200 Server started"}
-	w.Header().Set("Content-type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server started"})
 }
 
 func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
-
-	if err := h.mc.Stop(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	err := h.mc.Stop()
+	if err != nil {
+		if strings.Contains(err.Error(), "not running") {
+			respondWithError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Failed to stop server"+err.Error())
 		return
 	}
-	response := StatusResponse{Status: "200 Server stopped"}
-	w.Header().Set("Content-type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server stopped"})
+}
+
+func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
+	err := h.mc.Kill()
+	if err != nil {
+		if strings.Contains(err.Error(), "already stopped") {
+			respondWithError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Failed to Kill the server"+err.Error())
+		return
+	}
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server Killed"})
 }
 
 func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {

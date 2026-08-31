@@ -88,10 +88,9 @@ func SaveProperties(path string, changes map[string]string) error {
 	if err != nil {
 		// if file doesn't exist, just create a fresh (fallback to simple write)
 		if os.IsNotExist(err) {
-			return SavePropertiesSimple(fullPath, changes)
+			return SavePropertiesSimple(path, changes)
 		}
 		return err
-
 	}
 
 	var output bytes.Buffer
