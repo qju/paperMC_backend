@@ -34,8 +34,10 @@ function App() {
                     <Route path="worlds" element={<Worlds />} />
                     <Route path="updater" element={<Updater />} />
                     <Route path="users" element={<Users />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                     {/* Add Config, Backups later */}
                 </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </BrowserRouter>
     );

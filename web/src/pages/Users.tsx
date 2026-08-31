@@ -46,7 +46,7 @@ export default function Users() {
             });
             if (res.ok) {
                 const data = await res.json();
-                setUsers(data || []);
+                setUsers(Array.isArray(data) ? data : []);
             } else {
                 showToast("Failed to fetch users", 'error');
             }
