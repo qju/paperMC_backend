@@ -36,3 +36,14 @@
    - When a milestone is ready, merge `develop` into `main`.
    - Tag `main` with the semantic version: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`.
    - Push tags with `git push origin --tags`.
+
+## 3. Database Migration Governance
+
+- **Strict Migration Requirement:**
+  Direct un-versioned schema mutations (such as raw un-tracked `CREATE TABLE` or `ALTER TABLE` statements in store setup) are strictly prohibited.
+- **Migration Engine Registration:**
+  Any schema addition, modification, or data migration must be registered as an incremental version step in [`internal/database/migrations.go`](file:///home/marcin/Development/paperMC_backend/internal/database/migrations.go).
+- **Sequential Versioning:**
+  Every migration must have a strictly incremented integer `Version` (e.g. Version 1, Version 2) and execute inside the provided `*sql.Tx` transaction.
+- **Backward Compatibility:**
+  Migrations must be non-destructive and backward-compatible with existing production database files.

@@ -36,26 +36,7 @@ func NewSQLiteStore(storePath string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) Migrate() error {
-	// 1. User Table
-	SQL := `CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT NOT NULL,
-			password TEXT NOT NULL,
-			role TEXT NOT NULL
-		);`
-
-	if _, err := s.db.Exec(SQL); err != nil {
-		return err
-	}
-
-	// 2. Rejected Players table
-	queryRejected := `CREATE TABLE IF NOT EXISTS rejected_players (
-		username TEXT PRIMARY KEY,
-		count INTEGER DEFAULT 1,
-		last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
-	_, err := s.db.Exec(queryRejected)
-	return err
+	return RunMigrations(s.db)
 }
 
 func (s *SQLiteStore) GetUser(username string) (*User, error) {
