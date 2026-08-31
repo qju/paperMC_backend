@@ -110,6 +110,11 @@ func main() {
 		"POST /config":        mcHandler.PostConfig,
 		"POST /update":        mcHandler.HandleUpdate,
 
+		// Updater
+		"GET /api/updater/versions": mcHandler.HandleGetVersions,
+		"GET /api/updater/check":    mcHandler.HandleCheckUpdate,
+		"POST /api/updater/apply":   mcHandler.HandleUpdate,
+
 		// Worlds
 		"GET /api/worlds":          mcHandler.HandleGetWorlds,
 		"POST /api/worlds/active":  mcHandler.HandleSetActiveWorld,

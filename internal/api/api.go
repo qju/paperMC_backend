@@ -223,92 +223,172 @@ func (h *Handler) PostConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(StatusResponse{Status: "Config Saved"})
 }
 
+func (h *Handler) HandleGetVersions(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		project = updater.DefaultProject
+	}
+
+	versions, err := updater.GetProjectVersions(project)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, versions)
+}
+
+type CheckUpdateResponse struct {
+	Project         string `json:"project"`
+	Version         string `json:"version"`
+	LatestBuild     int    `json:"latest_build"`
+	LatestHash      string `json:"latest_hash"`
+	CurrentHash     string `json:"current_hash"`
+	UpdateAvailable bool   `json:"update_available"`
+	Channel         string `json:"channel"`
+	FileName        string `json:"file_name"`
+	Size            int64  `json:"size"`
+}
+
+func (h *Handler) HandleCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	version := r.URL.Query().Get("version")
+	if strings.TrimSpace(version) == "" {
+		respondWithError(w, http.StatusBadRequest, "Missing 'version' query parameter")
+		return
+	}
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		project = updater.DefaultProject
+	}
+
+	buildInfo, err := updater.GetLatestBuild(project, version)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	fullPath := filepath.Join(h.mc.WorkDir, h.mc.JarFile)
+	currentHash, _ := updater.GetFileHash(fullPath)
+
+	updateAvailable := !strings.EqualFold(buildInfo.SHA256, currentHash)
+
+	respondWithJSON(w, http.StatusOK, CheckUpdateResponse{
+		Project:         project,
+		Version:         buildInfo.Version,
+		LatestBuild:     buildInfo.BuildID,
+		LatestHash:      buildInfo.SHA256,
+		CurrentHash:     currentHash,
+		UpdateAvailable: updateAvailable,
+		Channel:         buildInfo.Channel,
+		FileName:        buildInfo.FileName,
+		Size:            buildInfo.Size,
+	})
+}
+
 func (h *Handler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	// 0. Try Lock, only one Update at a time, otherwise return 409
+	// 0. Try Lock, only one Update at a time
 	if !h.updateMu.TryLock() {
-		http.Error(w, "Update already in progress", http.StatusConflict)
+		respondWithError(w, http.StatusConflict, "Update already in progress")
 		return
 	}
 	defer h.updateMu.Unlock()
 
-	// 1. decode the request to get the version
-	var version = UpdateRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&version); err != nil {
+	// 1. Decode the request
+	var req UpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if err == io.EOF {
-			http.Error(w, "Empty request body", http.StatusBadRequest)
+			respondWithError(w, http.StatusBadRequest, "Empty request body")
 			return
 		}
-		msg := `Invalid JSON. Expected format: {"version": "1.21.10"}`
-		http.Error(w, msg, http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, `Invalid JSON. Expected format: {"version": "26.2"}`)
 		return
 	}
-	// 2. Get the latest build info
-	latestBuild, latestFileName, latestHash, err := updater.GetLatestBuild(version.Version)
+
+	targetVersion := strings.TrimSpace(req.Version)
+	if targetVersion == "" {
+		respondWithError(w, http.StatusBadRequest, "Target version cannot be empty")
+		return
+	}
+
+	// 2. Fetch the latest build info via Fill API v3
+	buildInfo, err := updater.GetLatestBuild(updater.DefaultProject, targetVersion)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "Failed to resolve build: "+err.Error())
 		return
 	}
-	h.mc.Broadcast(fmt.Sprintf("[System] Found Build %d. Hash: %s", latestBuild, latestHash))
-	// 3. Get old server.jar sha256 hash
+
+	h.mc.Broadcast(fmt.Sprintf("[System] Found Build %d (%s) for %s. SHA256: %s", buildInfo.BuildID, buildInfo.Channel, buildInfo.Version, buildInfo.SHA256))
+
+	// 3. Check existing JAR hash
 	fullPath := filepath.Join(h.mc.WorkDir, h.mc.JarFile)
-	hash, err := updater.GetFileHash(fullPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	currentHash, _ := updater.GetFileHash(fullPath)
+
+	if currentHash != "" && strings.EqualFold(buildInfo.SHA256, currentHash) {
+		h.mc.Broadcast("[System] Latest build is already installed")
+		respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"status":   "up_to_date",
+			"version":  buildInfo.Version,
+			"build_id": buildInfo.BuildID,
+		})
 		return
 	}
 
-	// 4. Compare
-	if latestHash == hash {
-		h.mc.Broadcast("Latest build already in use")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(StatusResponse{Status: ""})
-		return
-	}
-	// 5. Update
+	// 4. Download staging file with integrity check
+	stagingFileName := h.mc.JarFile + ".download"
+	h.mc.Broadcast(fmt.Sprintf("[System] Downloading %s (%.1f MB)...", buildInfo.FileName, float64(buildInfo.Size)/(1024*1024)))
 
-	// a. Download to server.jar.tmp
-	h.mc.Broadcast("[System] Downloading update...")
-	err = updater.DownloadJar(
-		version.Version, latestBuild, latestFileName, h.mc.WorkDir)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := updater.DownloadJar(buildInfo.DownloadURL, h.mc.WorkDir, stagingFileName, buildInfo.SHA256); err != nil {
+		h.mc.Broadcast("[System] Download failed: " + err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Download failed: "+err.Error())
 		return
 	}
 
-	// b. Stop server
-	h.mc.Broadcast("[System] Download complete. Stopping server...")
-	h.mc.SendCommand("msg @a Closing Server")
-	if err := h.mc.Stop(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// 5. Stop server if running
+	wasRunning := h.mc.GetStatus() == minecraft.StatusRunning
+	stagingPath := filepath.Join(h.mc.WorkDir, stagingFileName)
+	backupPath := filepath.Join(h.mc.WorkDir, h.mc.JarFile+".bak")
 
-	// c. Move old server.jar file in case failure later
-	oldPath := filepath.Join(h.mc.WorkDir, h.mc.JarFile)
-	oldPathTemp := oldPath + ".tmp"
-	if err := os.Rename(oldPath, oldPathTemp); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// d. Rename downloaded file
-	// 	if OK move forward
-	// 	if Not OK start server
-	newPath := filepath.Join(h.mc.WorkDir, latestFileName)
-	if err := os.Rename(newPath, oldPath); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		if err := os.Rename(oldPathTemp, oldPath); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+	if wasRunning {
+		h.mc.Broadcast("[System] Download verified. Stopping server for update...")
+		_ = h.mc.SendCommand("msg @a Server is updating, restarting shortly...")
+		if err := h.mc.Stop(); err != nil {
+			_ = os.Remove(stagingPath)
+			respondWithError(w, http.StatusInternalServerError, "Failed to stop server: "+err.Error())
 			return
 		}
 	}
 
-	// e. Start server
-	h.mc.Broadcast("[System] Files swapped. Restarting server...")
-	if err := h.mc.Start(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 6. Backup existing file and atomic rename
+	if _, err := os.Stat(fullPath); err == nil {
+		_ = os.Remove(backupPath) // remove previous backup if present
+		if err := os.Rename(fullPath, backupPath); err != nil {
+			_ = os.Remove(stagingPath)
+			respondWithError(w, http.StatusInternalServerError, "Failed to backup existing server JAR: "+err.Error())
+			return
+		}
+	}
+
+	if err := os.Rename(stagingPath, fullPath); err != nil {
+		_ = os.Rename(backupPath, fullPath) // Rollback
+		respondWithError(w, http.StatusInternalServerError, "Failed to install new server JAR: "+err.Error())
 		return
 	}
-	// f. Return 200
-	w.WriteHeader(http.StatusOK)
+
+	// 7. Restart server if it was active
+	if wasRunning {
+		h.mc.Broadcast("[System] Binary installed. Starting server...")
+		if err := h.mc.Start(); err != nil {
+			h.mc.Broadcast("[System] Failed to restart server: " + err.Error())
+			respondWithError(w, http.StatusInternalServerError, "Update succeeded but server restart failed: "+err.Error())
+			return
+		}
+	}
+
+	h.mc.Broadcast(fmt.Sprintf("[System] PaperMC updated to %s (Build %d)", buildInfo.Version, buildInfo.BuildID))
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "updated",
+		"version":  buildInfo.Version,
+		"build_id": buildInfo.BuildID,
+		"channel":  buildInfo.Channel,
+	})
 }
