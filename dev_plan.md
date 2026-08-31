@@ -1,6 +1,6 @@
-# PaperMC Manager: Master Development Plan
+# Lodestone: Master Development Plan
 
-**Mission:** Create the "Best in Class" Single Server Manager for PaperMC.
+**Mission:** Create the "Best in Class" High-Performance Single Server Manager for Minecraft (PaperMC & Forks).
 **Philosophy:** Zero Dependencies. Maximum Power. Single Binary.
 
 ---

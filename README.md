@@ -1,9 +1,9 @@
-# PaperMC Backend & Manager
+# Lodestone - High-Performance Minecraft Server Manager
 
 [![Go Version](https://img.shields.io/badge/Go-1.25-blue.svg)](https://golang.org/) 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance management dashboard and backend server for PaperMC Minecraft servers. Built as a single binary with zero runtime CGO dependencies, it provides real-time WebSocket console streaming, player access control, rich world diagnostics with GZIP NBT parsing, PaperMC Fill v3 automated updates, Web user management, and an embedded React SPA interface.
+**Lodestone** is a high-performance, single-binary management dashboard and backend controller for PaperMC and modern Minecraft servers. Built in pure Go with zero runtime CGO dependencies, it provides real-time WebSocket console streaming, player access control, rich world diagnostics with GZIP NBT parsing, automated PaperMC Fill v3 updates, Web user management, and an embedded React SPA interface.
 
 ## Features
 

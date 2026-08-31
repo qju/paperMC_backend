@@ -88,7 +88,7 @@ export default function DashboardLayout() {
 
             {/* MOBILE HEADER */}
             <div className="md:hidden fixed top-0 w-full h-16 bg-black/90 border-b border-white/10 z-50 flex items-center justify-between px-4">
-                <span className="font-pixel text-2xl text-mc-diamond">PaperMC</span>
+                <span className="font-pixel text-2xl text-mc-diamond">Lodestone</span>
                 <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">
                     <Menu />
                 </button>
@@ -102,7 +102,7 @@ export default function DashboardLayout() {
       `}>
                 <div className="p-6 border-b border-white/10 hidden md:block">
                     <h1 className="font-pixel text-3xl text-mc-diamond tracking-wider drop-shadow-md">
-                        PaperMC
+                        Lodestone
                     </h1>
                     <p className="text-xs text-white/50 font-mono mt-1">Manager v2.0</p>
                 </div>

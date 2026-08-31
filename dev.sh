@@ -9,7 +9,7 @@ cleanup() {
 # Register the cleanup function to run on exit (Ctrl+C)
 trap cleanup EXIT
 
-echo "🚀 Starting PaperMC Manager Dev Environment..."
+echo "🚀 Starting Lodestone Manager Dev Environment..."
 
 # 1. Start Backend in the background
 echo "🐘 Booting Go Backend..."
