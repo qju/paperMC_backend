@@ -93,6 +93,23 @@ func (s *SQLiteStore) UpsertRejectedPlayer(username string) error {
 	return err
 }
 
+func parseSQLiteTime(t string) time.Time {
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, t); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
 func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
 	SQL := `SELECT username, count, last_seen FROM rejected_players ORDER BY last_seen DESC LIMIT 50`
 	rows, err := s.db.Query(SQL)
@@ -108,14 +125,8 @@ func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
 		if err := rows.Scan(&p.Username, &p.Count, &t); err != nil {
 			continue
 		}
-		// SQLite standard format: 2006-01-02 15:04:05
-		// modernc.org/sqlite might return it differently depending on driver settings,
-		// but typically scanning into a string is safest, then parse.
-		// For simplicity in this stack, let's assume standard layout:
-		parsedTime, _ := time.Parse("2006-01-02 15:04:05", t)
-		p.LastSeen = parsedTime
+		p.LastSeen = parseSQLiteTime(t)
 		list = append(list, p)
-
 	}
 	return list, nil
 }

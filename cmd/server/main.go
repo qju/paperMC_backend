@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -29,13 +30,12 @@ func main() {
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM, store)
 
 	// --- BOOTSTRAP ADMIN USER ----
-	// IF ADMIN_PASS is ser, ensure the user exists
 	if cfg.AdminPass != "" {
 		_, err := store.GetUser(cfg.AdminUser)
 		if err == nil {
-			// User likely doesn't exist in database, let's create it
-			log.Printf("[Init] User '%s' not found. Creating...", cfg.AdminUser)
-		} else if err == sql.ErrNoRows {
+			log.Printf("[Init] AdminUser '%s' already exists.", cfg.AdminUser)
+		} else if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("[Init] AdminUser '%s' not found. Creating...", cfg.AdminUser)
 			hashedPass, hashErr := auth.HashPassword(cfg.AdminPass)
 			if hashErr != nil {
 				log.Printf("[Init] Failed to hash password: %v", hashErr)
@@ -46,15 +46,14 @@ func main() {
 					Role:     "admin",
 				}
 				if createErr := store.CreateUser(adminUser); createErr != nil {
-					log.Printf("[Init] Failed to create AdminUser: %c", createErr)
+					log.Printf("[Init] Failed to create AdminUser: %v", createErr)
 				} else {
 					log.Printf("[Init] AdminUser '%s' created successfully!", cfg.AdminUser)
 				}
 			}
 		} else {
-			log.Printf("[Init] Error checking for admin user '%v'", err)
+			log.Printf("[Init] Error checking for admin user: %v", err)
 		}
-
 	} else {
 		log.Printf("[Init] Warning: ADMIN_PASS is empty. No admin user created")
 	}
