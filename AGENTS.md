@@ -47,3 +47,10 @@
   Every migration must have a strictly incremented integer `Version` (e.g. Version 1, Version 2) and execute inside the provided `*sql.Tx` transaction.
 - **Backward Compatibility:**
   Migrations must be non-destructive and backward-compatible with existing production database files.
+
+## 4. Documentation & Plan Synchronization
+
+- **Mandatory README Update:**
+  Always update [`README.md`](file:///home/marcin/Development/paperMC_backend/README.md) after completing commits so that documentation, endpoints, configuration flags, and architectural summaries accurately reflect the current state of the codebase.
+- **Mandatory Plan Update:**
+  Always update the plan file [`dev_plan.md`](file:///home/marcin/Development/paperMC_backend/dev_plan.md) after completing commits, checking off completed tasks and updating milestone statuses.

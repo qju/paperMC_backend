@@ -7,7 +7,6 @@ server.properties
 *.csv
 *.txt
 *.ods
-dev_plan.md
 paper.db
 api_collection/PaperMC
 web_legacy/
