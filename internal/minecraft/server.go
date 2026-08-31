@@ -62,6 +62,7 @@ type Server struct {
 
 	// Private fields
 	uuidCache map[string]string
+	listeners []func(string)
 
 	store  database.Store
 	cmd    *exec.Cmd
@@ -332,22 +333,32 @@ func (s *Server) handleSessionChange(logLine string, joining bool) {
 	}
 }
 
-func (s *Server) Broadcast(msg string) {
-	// Sent msg to frontend
-	select {
-	case s.LogChan <- msg: // Send successfully
-	default: // No browser connected, drop the msg
-	}
-
-	// Add message to the LogHistory and
+func (s *Server) AddListener(listener func(string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.listeners = append(s.listeners, listener)
+}
 
+func (s *Server) Broadcast(msg string) {
+	// Add message to the LogHistory and copy listeners under lock
+	s.mu.Lock()
 	s.LogHistory = append(s.LogHistory, msg)
-
-	// Ring Buffer: keep max 100 lines
 	if len(s.LogHistory) > 100 {
 		s.LogHistory = s.LogHistory[1:]
+	}
+	currentListeners := make([]func(string), len(s.listeners))
+	copy(currentListeners, s.listeners)
+	s.mu.Unlock()
+
+	// Notify registered listeners (e.g. WebSocket Hub)
+	for _, listener := range currentListeners {
+		listener(msg)
+	}
+
+	// Sent msg to legacy channel if consumer attached
+	select {
+	case s.LogChan <- msg:
+	default:
 	}
 
 	// Sent msg to os output
@@ -394,6 +405,7 @@ func NewServer(workDir string, jarFile string, ram string, store database.Store)
 		RAM:           ram,
 		LogChan:       make(chan string),
 		LogHistory:    make([]string, 0),
+		listeners:     make([]func(string), 0),
 		status:        StatusStopped,
 		store:         store,
 		OnlinePlayers: make(map[string]Player),

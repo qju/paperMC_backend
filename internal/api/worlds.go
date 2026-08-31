@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	//"regexp"
 
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/minecraft"
@@ -29,7 +30,7 @@ func (h *Handler) HandleGetWorlds(w http.ResponseWriter, r *http.Request) {
 		// If file doesn't exist yet, we might have no active world configured
 		props = make(map[string]string)
 	}
-	
+
 	activeWorld := props["level-name"]
 	if activeWorld == "" {
 		activeWorld = "world" // Default minecraft world name
@@ -86,11 +87,11 @@ func (h *Handler) HandleSetActiveWorld(w http.ResponseWriter, r *http.Request) {
 	changes := map[string]string{
 		"level-name": newWorld,
 	}
-	
+
 	if req.Seed != nil {
 		changes["level-seed"] = *req.Seed
 	}
-	
+
 	if err := config.SaveProperties(h.mc.WorkDir, changes); err != nil {
 		http.Error(w, "Failed to update config: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +105,7 @@ func (h *Handler) HandleSetActiveWorld(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to stop server: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Run a goroutine to wait for the server to stop and then start it
 		go func() {
 			for {

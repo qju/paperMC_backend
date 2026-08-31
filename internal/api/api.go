@@ -19,6 +19,7 @@ type Handler struct {
 	mc       *minecraft.Server
 	updateMu sync.Mutex
 	store    database.Store
+	hub      *Hub
 }
 
 type StatusResponse struct {
@@ -45,11 +46,21 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 }
 
 func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler {
-	return &Handler{
+	hub := NewHub()
+	go hub.Run()
+
+	h := &Handler{
 		mc:       mcServer,
 		updateMu: sync.Mutex{},
 		store:    store,
+		hub:      hub,
 	}
+
+	mcServer.AddListener(func(msg string) {
+		h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
+	})
+
+	return h
 }
 
 func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
