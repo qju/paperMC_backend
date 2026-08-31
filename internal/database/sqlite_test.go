@@ -43,6 +43,33 @@ func TestSQLiteStoreUsersAndRejectedPlayers(t *testing.T) {
 		t.Errorf("Expected sql.ErrNoRows, got %v", err)
 	}
 
+	// 3b. Test List Users
+	users, err := store.ListUsers()
+	if err != nil {
+		t.Fatalf("ListUsers failed: %v", err)
+	}
+	if len(users) != 1 || users[0].Username != "admin_test" {
+		t.Errorf("Unexpected user list: %+v", users)
+	}
+
+	// 3c. Test Update Password
+	if err := store.UpdateUserPassword("admin_test", "new_hashed_pwd"); err != nil {
+		t.Fatalf("UpdateUserPassword failed: %v", err)
+	}
+	updatedUser, _ := store.GetUser("admin_test")
+	if updatedUser.Password != "new_hashed_pwd" {
+		t.Errorf("Password was not updated, got %s", updatedUser.Password)
+	}
+
+	// 3d. Test Delete User
+	if err := store.DeleteUser("admin_test"); err != nil {
+		t.Fatalf("DeleteUser failed: %v", err)
+	}
+	usersAfterDel, _ := store.ListUsers()
+	if len(usersAfterDel) != 0 {
+		t.Errorf("Expected 0 users after deletion, got %d", len(usersAfterDel))
+	}
+
 	// 4. Test Upsert Rejected Player (Insert)
 	if err := store.UpsertRejectedPlayer("Griefer123"); err != nil {
 		t.Fatalf("UpsertRejectedPlayer failed on insert: %v", err)

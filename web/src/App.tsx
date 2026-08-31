@@ -5,6 +5,7 @@ import Console from './pages/Console';
 import Players from './pages/Players';
 import Worlds from './pages/Worlds';
 import Updater from './pages/Updater';
+import Users from './pages/Users';
 import type { JSX } from 'react';
 
 // Placeholder Pages (We will build these one by one)
@@ -32,6 +33,7 @@ function App() {
                     <Route path="players" element={<Players />} />
                     <Route path="worlds" element={<Worlds />} />
                     <Route path="updater" element={<Updater />} />
+                    <Route path="users" element={<Users />} />
                     {/* Add Config, Backups later */}
                 </Route>
             </Routes>

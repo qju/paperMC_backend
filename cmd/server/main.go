@@ -120,6 +120,12 @@ func main() {
 		"POST /api/worlds/create":    mcHandler.HandleCreateWorld,
 		"POST /api/worlds/duplicate": mcHandler.HandleDuplicateWorld,
 		"DELETE /api/worlds":         mcHandler.HandleDeleteWorld,
+
+		// User Control (Web UI Users)
+		"GET /api/users":          mcHandler.HandleListUsers,
+		"POST /api/users":         mcHandler.HandleCreateUser,
+		"PUT /api/users/password": mcHandler.HandleUpdatePassword,
+		"DELETE /api/users":       mcHandler.HandleDeleteUser,
 	}
 
 	// Register all the protected routes

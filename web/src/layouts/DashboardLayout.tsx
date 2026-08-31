@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Terminal, Users, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap, Globe, DownloadCloud } from 'lucide-react';
+import { Terminal, Users, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap, Globe, DownloadCloud, Shield } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
 // 1. Define the Shape of the API Response
@@ -112,6 +112,7 @@ export default function DashboardLayout() {
                     <NavItem to="/players" icon={<Users size={20} />} label="Players" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/worlds" icon={<Globe size={20} />} label="Worlds" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/updater" icon={<DownloadCloud size={20} />} label="Updates & Versions" onClick={() => setMobileMenuOpen(false)} />
+                    <NavItem to="/users" icon={<Shield size={20} />} label="Web Users" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/config" icon={<Settings size={20} />} label="Server Config" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/backups" icon={<HardDrive size={20} />} label="Backups" onClick={() => setMobileMenuOpen(false)} />
                 </nav>

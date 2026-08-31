@@ -70,9 +70,40 @@ func (s *SQLiteStore) GetUser(username string) (*User, error) {
 	return &user, nil
 }
 
+func (s *SQLiteStore) ListUsers() ([]User, error) {
+	SQL := `SELECT id, username, role FROM users ORDER BY id ASC`
+	rows, err := s.db.Query(SQL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []User{}
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role); err != nil {
+			continue
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
 func (s *SQLiteStore) CreateUser(user *User) error {
 	SQL := `INSERT INTO users (username, password, role) VALUES (?, ?, ?)`
 	_, err := s.db.Exec(SQL, user.Username, user.Password, user.Role)
+	return err
+}
+
+func (s *SQLiteStore) UpdateUserPassword(username, passwordHash string) error {
+	SQL := `UPDATE users SET password = ? WHERE username = ?`
+	_, err := s.db.Exec(SQL, passwordHash, username)
+	return err
+}
+
+func (s *SQLiteStore) DeleteUser(username string) error {
+	SQL := `DELETE FROM users WHERE username = ?`
+	_, err := s.db.Exec(SQL, username)
 	return err
 }
 
