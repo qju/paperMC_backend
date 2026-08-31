@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="12" fill="#18181b"/>
+  <!-- Minecraft Isometric Block Top -->
+  <polygon points="32,8 54,20 32,32 10,20" fill="#55ffff" stroke="#22d3ee" stroke-width="1.5"/>
+  <!-- Left Face -->
+  <polygon points="10,20 32,32 32,56 10,44" fill="#0891b2" stroke="#0e7490" stroke-width="1.5"/>
+  <!-- Right Face -->
+  <polygon points="32,32 54,20 54,44 32,56" fill="#0284c7" stroke="#0369a1" stroke-width="1.5"/>
+  <!-- Inner Pixel Accents -->
+  <rect x="28" y="16" width="8" height="8" fill="#ffffff" opacity="0.6"/>
+  <rect x="18" y="28" width="6" height="12" fill="#0e7490" opacity="0.8"/>
+  <rect x="40" y="28" width="6" height="12" fill="#38bdf8" opacity="0.8"/>
+</svg>

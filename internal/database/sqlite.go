@@ -36,26 +36,7 @@ func NewSQLiteStore(storePath string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) Migrate() error {
-	// 1. User Table
-	SQL := `CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT NOT NULL,
-			password TEXT NOT NULL,
-			role TEXT NOT NULL
-		);`
-
-	if _, err := s.db.Exec(SQL); err != nil {
-		return err
-	}
-
-	// 2. Rejected Players table
-	queryRejected := `CREATE TABLE IF NOT EXISTS rejected_players (
-		username TEXT PRIMARY KEY,
-		count INTEGER DEFAULT 1,
-		last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
-	_, err := s.db.Exec(queryRejected)
-	return err
+	return RunMigrations(s.db)
 }
 
 func (s *SQLiteStore) GetUser(username string) (*User, error) {
@@ -70,9 +51,40 @@ func (s *SQLiteStore) GetUser(username string) (*User, error) {
 	return &user, nil
 }
 
+func (s *SQLiteStore) ListUsers() ([]User, error) {
+	SQL := `SELECT id, username, role FROM users ORDER BY id ASC`
+	rows, err := s.db.Query(SQL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []User{}
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role); err != nil {
+			continue
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
 func (s *SQLiteStore) CreateUser(user *User) error {
 	SQL := `INSERT INTO users (username, password, role) VALUES (?, ?, ?)`
 	_, err := s.db.Exec(SQL, user.Username, user.Password, user.Role)
+	return err
+}
+
+func (s *SQLiteStore) UpdateUserPassword(username, passwordHash string) error {
+	SQL := `UPDATE users SET password = ? WHERE username = ?`
+	_, err := s.db.Exec(SQL, passwordHash, username)
+	return err
+}
+
+func (s *SQLiteStore) DeleteUser(username string) error {
+	SQL := `DELETE FROM users WHERE username = ?`
+	_, err := s.db.Exec(SQL, username)
 	return err
 }
 
@@ -93,6 +105,23 @@ func (s *SQLiteStore) UpsertRejectedPlayer(username string) error {
 	return err
 }
 
+func parseSQLiteTime(t string) time.Time {
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, t); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
 func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
 	SQL := `SELECT username, count, last_seen FROM rejected_players ORDER BY last_seen DESC LIMIT 50`
 	rows, err := s.db.Query(SQL)
@@ -108,14 +137,8 @@ func (s *SQLiteStore) GetRejectedPlayers() ([]RejectedPlayer, error) {
 		if err := rows.Scan(&p.Username, &p.Count, &t); err != nil {
 			continue
 		}
-		// SQLite standard format: 2006-01-02 15:04:05
-		// modernc.org/sqlite might return it differently depending on driver settings,
-		// but typically scanning into a string is safest, then parse.
-		// For simplicity in this stack, let's assume standard layout:
-		parsedTime, _ := time.Parse("2006-01-02 15:04:05", t)
-		p.LastSeen = parsedTime
+		p.LastSeen = parseSQLiteTime(t)
 		list = append(list, p)
-
 	}
 	return list, nil
 }

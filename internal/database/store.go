@@ -5,10 +5,10 @@ import (
 )
 
 type User struct {
-	ID       int
-	Username string
-	Password string // hash
-	Role     string
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"-"` // hash, not serialized in JSON
+	Role     string `json:"role"`
 }
 
 type RejectedPlayer struct {
@@ -23,9 +23,12 @@ type Store interface {
 
 	// User Auth
 	GetUser(username string) (*User, error)
+	ListUsers() ([]User, error)
 	CreateUser(user *User) error
+	UpdateUserPassword(username, passwordHash string) error
+	DeleteUser(username string) error
 
-	//Player Intelligence
+	// Player Intelligence
 	UpsertRejectedPlayer(username string) error
 	GetRejectedPlayers() ([]RejectedPlayer, error)
 	DeleteRejectedPlayer(username string) error
