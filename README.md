@@ -92,7 +92,7 @@ All compiled binaries are generated into the `bin/` directory with stripped debu
 
 ## 🚀 Automated Remote Deployment
 
-Lodestone includes an automated deployment script ([`scripts/deploy.sh`](file:///home/marcin/Development/paperMC_backend/scripts/deploy.sh)) to compile, transfer, install, and restart the service on remote servers with a single command.
+Lodestone includes an automated deployment script ([`scripts/deploy.sh`](scripts/deploy.sh)) to compile, transfer, install, and restart the service on remote servers with a single command.
 
 ### 1. One-Command Deploy
 
@@ -113,7 +113,7 @@ make deploy
 
 ### 3. Production Systemd Service
 
-A production systemd unit template is provided in [`scripts/lodestone.service`](file:///home/marcin/Development/paperMC_backend/scripts/lodestone.service).
+A production systemd unit template is provided in [`scripts/lodestone.service`](scripts/lodestone.service).
 
 To install on your remote Linux host:
 ```sh

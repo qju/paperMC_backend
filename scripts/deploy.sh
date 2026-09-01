@@ -211,25 +211,38 @@ echo -e "${GREEN}✓ Connection verified!${NC}"
 # 3. Create Remote Directory
 echo ""
 echo -e "${CYAN}📁 Step 3: Preparing remote directory ${DEPLOY_DIR}...${NC}"
-ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" "mkdir -p '${DEPLOY_DIR}'"
+ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" "mkdir -p '${DEPLOY_DIR}' 2>/dev/null || sudo mkdir -p '${DEPLOY_DIR}'"
 echo -e "${GREEN}✓ Remote directory ready.${NC}"
 
-# 4. Upload Binary Atomically
+# 4. Upload Binary Atomically via Temporary Staging
+REMOTE_TMP="/tmp/lodestone-deploy-$$.bin"
 echo ""
-echo -e "${CYAN}🚀 Step 4: Transferring binary to remote host...${NC}"
+echo -e "${CYAN}🚀 Step 4: Transferring binary to remote host (via staging ${REMOTE_TMP})...${NC}"
+
 if command -v rsync >/dev/null 2>&1; then
     RSYNC_SSH="ssh -p ${DEPLOY_PORT}"
     if [ -n "$DEPLOY_KEY" ]; then
         RSYNC_SSH="ssh -p ${DEPLOY_PORT} -i ${DEPLOY_KEY}"
     fi
-    rsync -avz --progress -e "${RSYNC_SSH}" "${LOCAL_BINARY}" "${DEPLOY_HOST}:${DEPLOY_DIR}/lodestone.new"
+    rsync -avz --progress -e "${RSYNC_SSH}" "${LOCAL_BINARY}" "${DEPLOY_HOST}:${REMOTE_TMP}"
 else
-    scp "${SCP_OPTS[@]}" "${LOCAL_BINARY}" "${DEPLOY_HOST}:${DEPLOY_DIR}/lodestone.new"
+    scp "${SCP_OPTS[@]}" "${LOCAL_BINARY}" "${DEPLOY_HOST}:${REMOTE_TMP}"
 fi
 
-# Set executable permissions and atomic swap
-ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" "chmod +x '${DEPLOY_DIR}/lodestone.new' && mv '${DEPLOY_DIR}/lodestone.new' '${DEPLOY_DIR}/lodestone'"
-echo -e "${GREEN}✓ Binary deployed to ${DEPLOY_DIR}/lodestone${NC}"
+# Move into place with sudo fallback if directory is root-owned (e.g. /opt/lodestone)
+ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" "
+    if [ -w '${DEPLOY_DIR}' ]; then
+        mv '${REMOTE_TMP}' '${DEPLOY_DIR}/lodestone'
+        chmod +x '${DEPLOY_DIR}/lodestone'
+    else
+        sudo mv '${REMOTE_TMP}' '${DEPLOY_DIR}/lodestone'
+        sudo chmod +x '${DEPLOY_DIR}/lodestone'
+        if id minecraft >/dev/null 2>&1; then
+            sudo chown -R minecraft:minecraft '${DEPLOY_DIR}' 2>/dev/null || true
+        fi
+    fi
+"
+echo -e "${GREEN}✓ Binary successfully installed to ${DEPLOY_DIR}/lodestone${NC}"
 
 # 5. Restart Remote Service (if requested)
 if [ "$RESTART_SERVICE" = true ] && [ "$DEPLOY_SERVICE" != "none" ]; then

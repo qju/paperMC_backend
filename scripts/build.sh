@@ -87,7 +87,7 @@ build_binary() {
     CGO_ENABLED=0 GOOS="${os}" GOARCH="${arch}" go build -trimpath -ldflags="-s -w" -o "${out_path}" "${ROOT_DIR}/cmd/server/main.go"
     
     local size=$(ls -lh "${out_path}" | awk '{print $5}')
-    echo -e "${GREEN}✓ Successfully built:${NC} ${BOLD}${out_path}${NC} (${size})"
+    echo -e "${GREEN}✓ Successfully built:${NC} ${BOLD}bin/${out_name}${NC} (${size})"
 }
 
 echo ""
