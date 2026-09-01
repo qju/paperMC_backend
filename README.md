@@ -14,7 +14,9 @@
 - **PaperMC Fill v3 Updater:** Version family selector (26.2, 1.21, etc.), latest stable build detection, and streaming download with on-the-fly SHA-256 validation.
 - **Web User Administration:** Multi-user authentication control panel with bcrypt hashing, password rotation, and role management.
 - **Atomic SQLite Migration Engine:** Versioned schema migrations using native `PRAGMA user_version` with automatic production database adoption.
+- **Server Configuration Editor:** Categorized visual controls (General, Gameplay, Security, Performance, RCON) and raw editor with comment preservation for `server.properties`.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
+
 
 ## Getting Started
 
@@ -115,9 +117,11 @@ The application is configured using environment variables:
 - [x] PaperMC Fill v3 API & Auto-Updater with SHA-256 Validation
 - [x] Web User Administration Control Panel
 - [x] Atomic SQLite Migration Engine (`PRAGMA user_version`)
+- [x] Visual Server Configuration Editor (`server.properties`)
 - [ ] Milestone 2.2: Backup Engine & Snapshots
 - [ ] Milestone 2.5: Cron Task Scheduler
 - [ ] Milestone 3.2: Modrinth/Hangar Plugin Manager
+
 
 ## License
 

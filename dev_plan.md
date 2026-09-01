@@ -101,4 +101,4 @@
 - [x] **Task:** **Updates & Versions:** Major release group selector, latest build detector, changelog viewer, and one-click upgrade button.
 - [x] **Task:** **Web Users:** Operator account table, user creation modal, password reset modal, and safety guards.
 - [ ] **Task:** **Backups Page:** Backup listing, snapshot button, download links, and restore modal.
-- [ ] **Task:** **Config Editor:** Visual editor for `server.properties` with key-value form and raw editor toggle.
+- [x] **Task:** **Config Editor:** Visual editor for `server.properties` with categorized settings (General, Gameplay, Security, Performance, RCON), search filter, and raw editor toggle with comment preservation.

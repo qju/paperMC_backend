@@ -6,10 +6,8 @@ import Players from './pages/Players';
 import Worlds from './pages/Worlds';
 import Updater from './pages/Updater';
 import Users from './pages/Users';
+import ConfigEditor from './pages/ConfigEditor';
 import type { JSX } from 'react';
-
-// Placeholder Pages (We will build these one by one)
-//const Players = () => <h1 className="text-2xl font-pixel text-mc-gold">Player Management</h1>;
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
     const token = localStorage.getItem('token');
@@ -34,8 +32,8 @@ function App() {
                     <Route path="worlds" element={<Worlds />} />
                     <Route path="updater" element={<Updater />} />
                     <Route path="users" element={<Users />} />
+                    <Route path="config" element={<ConfigEditor />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
-                    {/* Add Config, Backups later */}
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
