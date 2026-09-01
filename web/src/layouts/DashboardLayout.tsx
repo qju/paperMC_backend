@@ -129,8 +129,8 @@ export default function DashboardLayout() {
             </aside>
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 overflow-auto relative pt-16 md:pt-0 flex flex-col">
-                <div className="flex-1 p-4 md:p-6 overflow-hidden">
+            <main className="flex-1 overflow-y-auto custom-scrollbar relative pt-16 md:pt-0 flex flex-col min-h-0">
+                <div className="flex-1 p-4 md:p-6 flex flex-col min-h-0">
                     <Outlet />
                 </div>
             </main>

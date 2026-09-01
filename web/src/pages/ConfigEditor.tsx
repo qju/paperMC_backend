@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Settings, Save, RefreshCw, AlertTriangle, CheckCircle, XCircle, Search, Sliders, FileCode, Check, Shield, Globe, Cpu, Radio } from 'lucide-react';
+import { Settings, Save, RefreshCw, AlertTriangle, CheckCircle, XCircle, Search, Sliders, FileCode, Check, Shield, Globe, Cpu, Radio, ListPlus } from 'lucide-react';
 
 interface Toast {
     id: number;
@@ -13,7 +13,7 @@ interface PropertyDefinition {
     description: string;
     type: 'boolean' | 'number' | 'string' | 'select';
     options?: string[];
-    category: 'general' | 'gameplay' | 'security' | 'performance' | 'rcon';
+    category: 'general' | 'gameplay' | 'security' | 'performance' | 'rcon' | 'other';
 }
 
 const KNOWN_PROPERTIES: PropertyDefinition[] = [
@@ -67,8 +67,8 @@ export default function ConfigEditor() {
     const [rawText, setRawText] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<'visual' | 'raw' | 'all'>('visual');
-    const [activeCategory, setActiveCategory] = useState<'general' | 'gameplay' | 'security' | 'performance' | 'rcon'>('general');
+    const [activeTab, setActiveTab] = useState<'visual' | 'all' | 'raw'>('visual');
+    const [activeCategory, setActiveCategory] = useState<'general' | 'gameplay' | 'security' | 'performance' | 'rcon' | 'other'>('general');
     const [searchQuery, setSearchQuery] = useState('');
     const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -191,12 +191,44 @@ export default function ConfigEditor() {
         return entries.filter(([k, v]) => k.toLowerCase().includes(query) || v.toLowerCase().includes(query));
     }, [properties, searchQuery]);
 
+    // Compute custom / extra properties not in KNOWN_PROPERTIES
+    const otherProperties = useMemo(() => {
+        const knownKeys = new Set(KNOWN_PROPERTIES.map(p => p.key));
+        return Object.keys(properties)
+            .filter(k => !knownKeys.has(k))
+            .map(k => ({
+                key: k,
+                label: k,
+                description: 'Custom or unclassified server property.',
+                type: (properties[k] === 'true' || properties[k] === 'false' ? 'boolean' : !isNaN(Number(properties[k])) && properties[k] !== '' ? 'number' : 'string') as PropertyDefinition['type'],
+                category: 'other' as const
+            }));
+    }, [properties]);
+
     const categorizedProperties = useMemo(() => {
+        if (activeCategory === 'other') return otherProperties;
         return KNOWN_PROPERTIES.filter(p => p.category === activeCategory);
-    }, [activeCategory]);
+    }, [activeCategory, otherProperties]);
+
+    const categoryCounts = useMemo(() => {
+        const counts: Record<string, number> = {
+            general: 0,
+            gameplay: 0,
+            security: 0,
+            performance: 0,
+            rcon: 0,
+            other: otherProperties.length
+        };
+        for (const p of KNOWN_PROPERTIES) {
+            if (p.key in properties) {
+                counts[p.category] = (counts[p.category] || 0) + 1;
+            }
+        }
+        return counts;
+    }, [properties, otherProperties]);
 
     return (
-        <div className="space-y-6 relative min-h-[600px] flex flex-col">
+        <div className="space-y-6 relative min-h-full pb-16 flex flex-col">
             {/* TOAST NOTIFICATIONS */}
             <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
                 {toasts.map(toast => (
@@ -215,18 +247,18 @@ export default function ConfigEditor() {
                 ))}
             </div>
 
-            {/* HEADER */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* HEADER & ACTION BAR */}
+            <div className="bg-black/60 border border-white/10 rounded-xl p-5 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-pixel text-mc-diamond flex items-center gap-3">
                         <Settings className="text-mc-diamond" size={28} /> Server Configuration
                     </h1>
                     <p className="text-white/50 font-mono text-sm mt-1">
-                        Visual and raw configuration editor for <code className="text-mc-gold font-mono">server.properties</code>
+                        Visual controls and raw editor for <code className="text-mc-gold font-mono">server.properties</code> ({Object.keys(properties).length} properties loaded)
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 self-end md:self-center">
                     <button
                         onClick={fetchConfig}
                         disabled={loading || saving}
@@ -256,7 +288,7 @@ export default function ConfigEditor() {
                 <AlertTriangle className="text-amber-400 shrink-0 mt-0.5" size={20} />
                 <div className="text-xs font-mono text-amber-200/90 leading-relaxed">
                     <strong className="text-amber-300 font-bold uppercase tracking-wider block mb-0.5">Minecraft Engine Notice:</strong>
-                    Changes made to <span className="text-white font-bold">server.properties</span> are loaded when Minecraft boots. After saving your changes, restart the server from the Console to apply them.
+                    Changes made to <span className="text-white font-bold">server.properties</span> take effect when the server restarts. After saving, restart the server from the Console to apply them.
                 </div>
             </div>
 
@@ -304,35 +336,49 @@ export default function ConfigEditor() {
                             onClick={() => setActiveCategory('general')}
                             icon={<Globe size={16} />}
                             label="General & Server"
+                            count={categoryCounts.general}
                         />
                         <CategoryButton
                             active={activeCategory === 'gameplay'}
                             onClick={() => setActiveCategory('gameplay')}
                             icon={<Sliders size={16} />}
                             label="Gameplay & World"
+                            count={categoryCounts.gameplay}
                         />
                         <CategoryButton
                             active={activeCategory === 'security'}
                             onClick={() => setActiveCategory('security')}
                             icon={<Shield size={16} />}
                             label="Security & Whitelist"
+                            count={categoryCounts.security}
                         />
                         <CategoryButton
                             active={activeCategory === 'performance'}
                             onClick={() => setActiveCategory('performance')}
                             icon={<Cpu size={16} />}
                             label="Performance & Ticks"
+                            count={categoryCounts.performance}
                         />
                         <CategoryButton
                             active={activeCategory === 'rcon'}
                             onClick={() => setActiveCategory('rcon')}
                             icon={<Radio size={16} />}
                             label="RCON Console"
+                            count={categoryCounts.rcon}
                         />
+                        {otherProperties.length > 0 && (
+                            <CategoryButton
+                                active={activeCategory === 'other'}
+                                onClick={() => setActiveCategory('other')}
+                                icon={<ListPlus size={16} />}
+                                label="Custom / Other"
+                                count={categoryCounts.other}
+                            />
+                        )}
                     </div>
 
                     {/* CATEGORY CONTROLS */}
-                    <div className="bg-black/60 border border-white/10 rounded-xl p-6 backdrop-blur-md space-y-6">
+                    <div className="bg-black/60 border border-white/10 rounded-xl p-6 backdrop-blur-md">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {categorizedProperties.map(prop => (
                                 <PropertyField
@@ -356,61 +402,67 @@ export default function ConfigEditor() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Filter properties by key or value (e.g. motd, difficulty, pvp)..."
+                            placeholder="Filter properties by key or value (e.g. motd, difficulty, port)..."
                             className="w-full bg-black/60 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-white font-mono text-sm focus:border-mc-diamond focus:outline-none placeholder-white/30 backdrop-blur-md"
                         />
                     </div>
 
                     {/* TABLE OF ALL PROPERTIES */}
                     <div className="bg-black/60 border border-white/10 rounded-xl overflow-hidden backdrop-blur-md">
-                        <div className="max-h-[600px] overflow-y-auto divide-y divide-white/5 custom-scrollbar">
-                            {filteredAllProperties.map(([key, val]) => (
-                                <div key={key} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-white/5 transition-colors">
-                                    <div className="font-mono text-sm">
-                                        <span className="text-mc-diamond font-bold">{key}</span>
+                        <div className="divide-y divide-white/5">
+                            {filteredAllProperties.length > 0 ? (
+                                filteredAllProperties.map(([key, val]) => (
+                                    <div key={key} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                                        <div className="font-mono text-sm">
+                                            <span className="text-mc-diamond font-bold">{key}</span>
+                                        </div>
+                                        <div className="w-full md:w-80">
+                                            {val === 'true' || val === 'false' ? (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handlePropertyChange(key, val === 'true' ? 'false' : 'true')}
+                                                        className={`px-3 py-1.5 rounded font-mono text-xs font-bold transition-all border ${
+                                                            val === 'true'
+                                                                ? 'bg-green-600 text-white border-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]'
+                                                                : 'bg-red-950/80 text-red-300 border-red-500/30'
+                                                        }`}
+                                                    >
+                                                        {val === 'true' ? 'TRUE (Enabled)' : 'FALSE (Disabled)'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    value={val}
+                                                    onChange={(e) => handlePropertyChange(key, e.target.value)}
+                                                    className="w-full bg-black/80 border border-white/20 rounded-lg p-2.5 text-white font-mono text-xs focus:border-mc-diamond focus:outline-none"
+                                                />
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="w-full md:w-80">
-                                        {val === 'true' || val === 'false' ? (
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handlePropertyChange(key, val === 'true' ? 'false' : 'true')}
-                                                    className={`px-3 py-1.5 rounded font-mono text-xs font-bold transition-all border ${
-                                                        val === 'true'
-                                                            ? 'bg-green-600 text-white border-green-500'
-                                                            : 'bg-red-950/80 text-red-300 border-red-500/30'
-                                                    }`}
-                                                >
-                                                    {val === 'true' ? 'TRUE (Enabled)' : 'FALSE (Disabled)'}
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={val}
-                                                onChange={(e) => handlePropertyChange(key, e.target.value)}
-                                                className="w-full bg-black/80 border border-white/20 rounded p-2 text-white font-mono text-xs focus:border-mc-diamond focus:outline-none"
-                                            />
-                                        )}
-                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-8 text-center text-white/30 font-mono text-sm">
+                                    No properties matching query &quot;{searchQuery}&quot;
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
             {activeTab === 'raw' && (
-                <div className="bg-black/60 border border-white/10 rounded-xl p-6 backdrop-blur-md flex-1 flex flex-col space-y-4">
+                <div className="bg-black/60 border border-white/10 rounded-xl p-6 backdrop-blur-md flex flex-col space-y-4">
                     <div className="flex justify-between items-center text-xs font-mono text-white/50">
-                        <span>Direct Editor Mode (Preserves custom comments & key groupings)</span>
+                        <span>Direct File Editor (Preserves custom comments and formatting)</span>
                         <span>{rawText.split('\n').length} lines</span>
                     </div>
                     <textarea
                         value={rawText}
                         onChange={(e) => setRawText(e.target.value)}
-                        rows={22}
-                        className="w-full flex-1 bg-black/90 border border-white/20 rounded-xl p-4 font-mono text-xs text-white leading-relaxed focus:border-mc-diamond focus:outline-none custom-scrollbar"
+                        rows={24}
+                        className="w-full bg-black/90 border border-white/20 rounded-xl p-4 font-mono text-xs text-white leading-relaxed focus:border-mc-diamond focus:outline-none custom-scrollbar"
                         placeholder="# server.properties"
                         spellCheck={false}
                     />
@@ -420,11 +472,11 @@ export default function ConfigEditor() {
     );
 }
 
-function CategoryButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function CategoryButton({ active, onClick, icon, label, count }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; count?: number }) {
     return (
         <button
             onClick={onClick}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs uppercase tracking-wider font-bold transition-all border ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-xs uppercase tracking-wider font-bold transition-all border ${
                 active
                     ? 'bg-mc-gold/20 text-mc-gold border-mc-gold/40 shadow-[0_0_10px_rgba(255,170,0,0.2)]'
                     : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border-white/5'
@@ -432,12 +484,17 @@ function CategoryButton({ active, onClick, icon, label }: { active: boolean; onC
         >
             {icon}
             <span>{label}</span>
+            {count !== undefined && (
+                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-black/40 text-white/70 border border-white/10">
+                    {count}
+                </span>
+            )}
         </button>
     );
 }
 
 function PropertyField({ def, value, onChange }: { def: PropertyDefinition; value: string; onChange: (val: string) => void }) {
-    const isBool = def.type === 'boolean';
+    const isBool = def.type === 'boolean' || value === 'true' || value === 'false';
     const isTrue = value === 'true';
 
     return (
