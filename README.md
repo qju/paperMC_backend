@@ -52,17 +52,82 @@ The application is configured using environment variables:
 | `ADMIN_PASS` | Initial admin password. | **Required** |
 | `JWT_SECRET` | Secret key for signing JWT tokens. | Dev fallback |
 
-### Running the Server
+### Running the Server Locally
 
 1. Set the required `ADMIN_PASS` environment variable:
    ```sh
    export ADMIN_PASS="your-secret-password"
    ```
-2. Start the server:
+2. Start the server (or run `./dev.sh` to run backend + React dev UI concurrently):
    ```sh
    go run cmd/server/main.go
    ```
 3. Open `http://localhost:8080` in your browser.
+
+---
+
+## 🏗️ Building & Cross-Compilation
+
+Because Lodestone uses modern, pure-Go SQLite bindings without CGO (`modernc.org/sqlite`), static binaries can be effortlessly cross-compiled for any target architecture directly from any OS.
+
+### Quick Build Commands (via Makefile)
+
+```sh
+# Build native binary + frontend UI bundle
+make build
+
+# Cross-compile for Linux ARM64 (Raspberry Pi 4/5, Oracle Cloud Ampere, AWS Graviton)
+make build-arm64
+
+# Cross-compile for Linux AMD64 (Standard x86_64 VPS / Dedicated servers)
+make build-amd64
+
+# Cross-compile all architectures simultaneously
+make build-all
+```
+
+All compiled binaries are generated into the `bin/` directory with stripped debug symbols (`-ldflags="-s -w"`) resulting in standalone static executables (~12MB).
+
+---
+
+## 🚀 Automated Remote Deployment
+
+Lodestone includes an automated deployment script ([`scripts/deploy.sh`](file:///home/marcin/Development/paperMC_backend/scripts/deploy.sh)) to compile, transfer, install, and restart the service on remote servers with a single command.
+
+### 1. One-Command Deploy
+
+```sh
+./scripts/deploy.sh --host ubuntu@192.168.1.100 --dir /opt/lodestone --arch arm64 --service lodestone
+```
+
+### 2. Interactive Mode & Config Saving
+
+Run `./scripts/deploy.sh` without arguments to enter interactive mode. You will be prompted for the remote SSH target and installation folder, with the option to save your settings to `.deploy.env` for rapid future deployments:
+
+```sh
+# Future deployments only require:
+make deploy
+# or
+./scripts/deploy.sh
+```
+
+### 3. Production Systemd Service
+
+A production systemd unit template is provided in [`scripts/lodestone.service`](file:///home/marcin/Development/paperMC_backend/scripts/lodestone.service).
+
+To install on your remote Linux host:
+```sh
+# Copy service file to systemd directory
+sudo cp scripts/lodestone.service /etc/systemd/system/lodestone.service
+
+# Reload daemon and enable service
+sudo systemctl daemon-reload
+sudo systemctl enable --now lodestone
+
+# View live service logs
+journalctl -u lodestone -f
+```
+
 
 ## API Endpoints
 

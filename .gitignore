@@ -12,3 +12,5 @@ api_collection/PaperMC
 web_legacy/
 papermc-manager
 dist/
+.deploy.env
+.deploy.conf
