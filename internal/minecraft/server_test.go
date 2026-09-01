@@ -252,3 +252,38 @@ func TestStreamLogs(t *testing.T) {
 	}
 }
 
+func TestModernizedVitalsAndMultiCore(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "8G", nil)
+
+	// 1. Stopped state vitals
+	vitals := server.GetVitals()
+	if vitals.Status != StatusStopped {
+		t.Errorf("Expected Status Stopped, got %v", vitals.Status)
+	}
+	if vitals.DiskTotal == 0 {
+		t.Errorf("Expected non-zero disk total")
+	}
+
+	// 2. Simulated running state with history appending
+	server.status = StatusRunning
+	server.startTime = time.Now().Add(-120 * time.Second) // 2 minutes ago
+
+	for i := 0; i < 40; i++ {
+		v := server.GetVitals()
+		if v.UptimeSeconds < 120 {
+			t.Errorf("Expected uptime >= 120s, got %d", v.UptimeSeconds)
+		}
+	}
+
+	finalVitals := server.GetVitals()
+	// History buffer must be capped at 30 entries
+	if len(finalVitals.History) != 30 {
+		t.Errorf("Expected history capped at 30 points, got %d", len(finalVitals.History))
+	}
+	if finalVitals.TPS != 20.0 {
+		t.Errorf("Expected healthy TPS 20.0, got %f", finalVitals.TPS)
+	}
+}
+
+

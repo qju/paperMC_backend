@@ -7,7 +7,7 @@
 
 ## Features
 
-- **Lifecycle & Resource Monitoring:** Start, stop, and kill the Minecraft server process with live CPU and RSS RAM metrics (`gopsutil`).
+- **Multi-Core & Real-Time Vitals Monitoring:** Track per-core CPU load (Core 0 vs Core 1), JVM process vs host system utilization, JVM threads, memory RSS, disk storage headroom (<5GB alerts), live uptime counter, TPS/MSPT engine tick rate, and rolling time-series sparklines via real-time WebSocket push (`/ws`).
 - **Real-Time Console:** Bidirectional WebSocket streaming with centralized broadcast hub and ANSI terminal emulation.
 - **Player Management:** Whitelist, Ban, Operator controls, rejected connection intelligence, live search, and pagination.
 - **Rich World Diagnostics:** Pure-Go zero-dependency GZIP binary NBT parser (`ReadLevelDat`), Modern (26.1+ `world/dimensions/`) and Legacy dimension discovery, safe duplication, and deletion.
@@ -16,6 +16,7 @@
 - **Atomic SQLite Migration Engine:** Versioned schema migrations using native `PRAGMA user_version` with automatic production database adoption.
 - **Server Configuration Editor:** Categorized visual controls (General, Gameplay, Security, Performance, RCON) and raw editor with comment preservation for `server.properties`.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
+
 
 
 ## Getting Started

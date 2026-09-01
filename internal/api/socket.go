@@ -24,8 +24,8 @@ var upgrader = websocket.Upgrader{
 
 // WSMessage defines the JSON format for all websocket traffic
 type WSMessage struct {
-	Type string `json:"type"` // "log", "command", or "error"
-	Data string `json:"data"`
+	Type string `json:"type"` // "log", "command", "error", or "vitals"
+	Data any    `json:"data"`
 }
 
 // Hub maintains the set of active clients and broadcasts messages to them.
@@ -108,10 +108,13 @@ func (c *Client) readPump() {
 		}
 
 		if msg.Type == "command" {
-			if err := c.handler.mc.SendCommand(msg.Data); err != nil {
-				select {
-				case c.send <- WSMessage{Type: "error", Data: err.Error()}:
-				default:
+			cmdStr, _ := msg.Data.(string)
+			if cmdStr != "" {
+				if err := c.handler.mc.SendCommand(cmdStr); err != nil {
+					select {
+					case c.send <- WSMessage{Type: "error", Data: err.Error()}:
+					default:
+					}
 				}
 			}
 		}

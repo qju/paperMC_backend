@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Vitals } from '../types';
 
-type LogMessage = {
-    type: 'log' | 'error';
-    data: string;
-};
+type WSIncomingMessage =
+    | { type: 'log'; data: string }
+    | { type: 'error'; data: string }
+    | { type: 'vitals'; data: Vitals };
 
 export function useSocket() {
     const [isConnected, setIsConnected] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
+    const [liveVitals, setLiveVitals] = useState<Vitals | null>(null);
 
     // We use ref because we need to talk to the *same* useSocket
     // across different render of the component.
@@ -26,39 +28,37 @@ export function useSocket() {
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
 
-        // 4. Handle Event
+        // 4. Handle Events
         ws.onopen = () => setIsConnected(true);
         ws.onclose = () => setIsConnected(false);
 
-        // THE IMPORTANT PART: Receving data
+        // 5. Receiving data
         ws.onmessage = (event) => {
             try {
-                const msg: LogMessage = JSON.parse(event.data);
+                const msg: WSIncomingMessage = JSON.parse(event.data);
                 if (msg.type === 'log') {
-                    // Functoin State Update:
-                    // "Tate the previous list, add the new line at the end"
                     setLogs((prev) => [...prev, msg.data]);
+                } else if (msg.type === 'vitals') {
+                    setLiveVitals(msg.data);
                 }
             } catch (err) {
                 console.error("WS Parse Error", err);
             }
         };
 
-        // 5. Cleanup; if the user leave the page, kill connection
+        // 6. Cleanup
         return () => {
             ws.close();
         };
-
-    }, []); // [] means "Run this onece when the component mounts"
+    }, []);
 
     // Helper function to send data BACK to server
     const sendCommand = (cmd: string) => {
-        // Only send if the connection is actually Open
-        if (socketRef.current && socketRef.current.readyState == WebSocket.OPEN) {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({ type: 'command', data: cmd }));
         }
     };
 
-    return { isConnected, logs, sendCommand };
+    return { isConnected, logs, liveVitals, sendCommand };
 }
 

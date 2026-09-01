@@ -27,3 +27,32 @@ export interface UnifiedPlayer {
     rejectionCount?: number;
 }
 
+export interface MetricPoint {
+    timestamp: number;
+    cpu: number;
+    ram: number;
+    tps: number;
+    mspt: number;
+}
+
+export interface Vitals {
+    status: string;
+    uptime_seconds: number;
+    cpu: number;
+    system_cpu: number;
+    cpu_cores?: number[];
+    threads?: number;
+    ram: number;
+    total_memory: string;
+    disk_free?: number;
+    disk_total?: number;
+    disk_used_pct?: number;
+    player_count: number;
+    player_list: Array<{ name: string; uuid: string }>;
+    active_world: string;
+    tps?: number;
+    mspt?: number;
+    history?: MetricPoint[];
+}
+
+
