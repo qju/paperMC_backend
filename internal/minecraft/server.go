@@ -380,7 +380,7 @@ func (s *Server) SendCommand(cmd string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.status != StatusRunning {
+	if s.status != StatusRunning && s.status != StatusStopping {
 		return errors.New("server is already stopped")
 	}
 

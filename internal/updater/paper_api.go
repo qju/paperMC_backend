@@ -18,9 +18,11 @@ import (
 
 const (
 	DefaultProject  = "paper"
-	FillAPIBaseURL  = "https://fill.papermc.io/v3"
 	UserAgentHeader = "Lodestone-Manager/2.0 (+https://github.com/qju/paperMC_backend)"
 )
+
+var FillAPIBaseURL = "https://fill.papermc.io/v3"
+
 
 // Raw API response from /v3/projects/{project}
 type projectResponseV3 struct {

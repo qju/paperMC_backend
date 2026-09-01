@@ -54,3 +54,18 @@
   Always update [`README.md`](file:///home/marcin/Development/paperMC_backend/README.md) after completing commits so that documentation, endpoints, configuration flags, and architectural summaries accurately reflect the current state of the codebase.
 - **Mandatory Plan Update:**
   Always update the plan file [`dev_plan.md`](file:///home/marcin/Development/paperMC_backend/dev_plan.md) after completing commits, checking off completed tasks and updating milestone statuses.
+
+## 5. Mandatory Testing & Test Review Standards
+
+- **Mandatory Tests with Every Addition:**
+  Every new feature, endpoint, database operation, utility function, bug fix, or refactor must include comprehensive automated unit and/or integration tests. No code addition is complete without accompanying tests covering both happy paths and edge/error cases.
+- **Mandatory Test Review on Code Changes:**
+  Whenever existing code is modified or refactored:
+  1. Review and update corresponding existing test suites to prevent test decay or stale assertions.
+  2. Add regression tests specifically reproducing fixed bugs.
+  3. Verify that changes do not decrease statement coverage across the affected packages.
+  4. Ensure all package tests run deterministically and fast with zero race conditions or unclosed resources.
+- **Target Coverage:**
+  Maintain a minimum of 80% statement test coverage across all core internal backend packages (`internal/auth`, `internal/api`, `internal/config`, `internal/database`, `internal/minecraft`, `internal/updater`).
+
+
