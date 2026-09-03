@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/minecraft"
 )
 
@@ -80,4 +81,62 @@ func TestWorldsAPIHandlers(t *testing.T) {
 	if wDelCopy.Code != http.StatusOK {
 		t.Errorf("Expected status 200 when deleting inactive world, got %d", wDelCopy.Code)
 	}
+
+	// 6. Test POST /api/worlds/create
+	t.Run("Create World", func(t *testing.T) {
+		createBody, _ := json.Marshal(SetActiveWorldRequest{
+			WorldName: "new_creative_world",
+		})
+		reqCreate := httptest.NewRequest(http.MethodPost, "/api/worlds/create", bytes.NewReader(createBody))
+		wCreate := httptest.NewRecorder()
+		handler.HandleCreateWorld(wCreate, reqCreate)
+
+		if wCreate.Code != http.StatusOK {
+			t.Errorf("Expected 200 OK creating world, got %d: %s", wCreate.Code, wCreate.Body.String())
+		}
+
+		// Verify server.properties has updated level-name
+		props, err := config.LoadProperties(tempDir)
+		if err != nil || props["level-name"] != "new_creative_world" {
+			t.Errorf("Expected server.properties level-name to be 'new_creative_world', got: %v, %+v", err, props)
+		}
+
+		// Missing name fails
+		badCreate := httptest.NewRequest(http.MethodPost, "/api/worlds/create", bytes.NewReader([]byte(`{"world_name":""}`)))
+		wBadCreate := httptest.NewRecorder()
+		handler.HandleCreateWorld(wBadCreate, badCreate)
+		if wBadCreate.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 on empty world name, got %d", wBadCreate.Code)
+		}
+	})
+
+	// 7. Test POST /api/worlds/active
+	t.Run("Set Active World", func(t *testing.T) {
+		// Empty name fails
+		badActive := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader([]byte(`{"world_name":""}`)))
+		wBadActive := httptest.NewRecorder()
+		handler.HandleSetActiveWorld(wBadActive, badActive)
+		if wBadActive.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 on empty active world name, got %d", wBadActive.Code)
+		}
+
+		// Valid name switches server.properties when server is stopped
+		goodActive := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader([]byte(`{"world_name":"new_creative_world"}`)))
+		wGoodActive := httptest.NewRecorder()
+		handler.HandleSetActiveWorld(wGoodActive, goodActive)
+		if wGoodActive.Code != http.StatusOK {
+			t.Errorf("Expected 200 setting active world, got %d: %s", wGoodActive.Code, wGoodActive.Body.String())
+		}
+	})
+
+	// 8. Delete world validation
+	t.Run("Delete World Validation", func(t *testing.T) {
+		reqEmptyDel := httptest.NewRequest(http.MethodDelete, "/api/worlds", nil)
+		wEmptyDel := httptest.NewRecorder()
+		handler.HandleDeleteWorld(wEmptyDel, reqEmptyDel)
+		if wEmptyDel.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 on empty delete name, got %d", wEmptyDel.Code)
+		}
+	})
 }
+

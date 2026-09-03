@@ -96,4 +96,33 @@ func TestWorldLifecycleAndDiagnostics(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tempDir, "survival_backup")); !os.IsNotExist(err) {
 		t.Errorf("Expected deleted directory to be gone")
 	}
+
+	// 9. Error cases
+	if err := DuplicateWorld(tempDir, "non_existent", "target"); err == nil {
+		t.Errorf("Expected error duplicating non-existent world, got nil")
+	}
+	if err := DuplicateWorld(tempDir, "survival_modern", "survival_modern"); err == nil {
+		t.Errorf("Expected error duplicating onto existing world, got nil")
+	}
 }
+
+func TestFormatBytes(t *testing.T) {
+	cases := []struct {
+		bytes int64
+		want  string
+	}{
+		{500, "500 B"},
+		{1024 * 50, "50.0 KB"},
+		{1024 * 1024 * 120, "120.0 MB"},
+		{1024 * 1024 * 1024 * 5, "5.0 GB"},
+		{1024 * 1024 * 1024 * 1024 * 2, "2.0 TB"},
+	}
+
+	for _, tc := range cases {
+		got := FormatBytes(tc.bytes)
+		if got != tc.want {
+			t.Errorf("FormatBytes(%d) = '%s', want '%s'", tc.bytes, got, tc.want)
+		}
+	}
+}
+

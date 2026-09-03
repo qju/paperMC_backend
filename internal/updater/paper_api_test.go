@@ -72,3 +72,105 @@ func TestDownloadJarChecksumValidation(t *testing.T) {
 		t.Errorf("Expected corrupted temp file to be deleted")
 	}
 }
+
+func TestGetFileHash(t *testing.T) {
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.jar")
+	content := []byte("hash-testing-content")
+
+	_ = os.WriteFile(testFile, content, 0644)
+
+	hasher := sha256.New()
+	hasher.Write(content)
+	expectedHash := hex.EncodeToString(hasher.Sum(nil))
+
+	gotHash, err := GetFileHash(testFile)
+	if err != nil {
+		t.Fatalf("GetFileHash failed: %v", err)
+	}
+	if gotHash != expectedHash {
+		t.Errorf("GetFileHash = %s, want %s", gotHash, expectedHash)
+	}
+
+	// Non-existent file returns empty string, nil error
+	emptyHash, err := GetFileHash(filepath.Join(tempDir, "non_existent.jar"))
+	if err != nil || emptyHash != "" {
+		t.Errorf("Expected empty hash and nil error for missing file, got '%s', %v", emptyHash, err)
+	}
+}
+
+func TestGetLatestBuild_EmptyVersion(t *testing.T) {
+	_, err := GetLatestBuild("paper", "")
+	if err == nil {
+		t.Errorf("Expected error when version is empty, got nil")
+	}
+}
+
+func TestGetProjectVersions_MockServer(t *testing.T) {
+	mockJSON := `{
+		"project": {"id": "paper", "name": "Paper"},
+		"versions": {
+			"26.2": ["26.2.0", "26.2.1"],
+			"1.21": ["1.21.0", "1.21.1"]
+		}
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(mockJSON))
+	}))
+	defer server.Close()
+
+	origURL := FillAPIBaseURL
+	FillAPIBaseURL = server.URL
+	defer func() { FillAPIBaseURL = origURL }()
+
+	resp, err := GetProjectVersions("paper")
+	if err != nil {
+		t.Fatalf("GetProjectVersions failed: %v", err)
+	}
+
+	if resp.Project != "paper" || len(resp.VersionGroups) != 2 {
+		t.Errorf("Unexpected project versions response: %+v", resp)
+	}
+	if resp.VersionGroups[0].Group != "26.2" {
+		t.Errorf("Expected first group '26.2' sorted descending, got '%s'", resp.VersionGroups[0].Group)
+	}
+}
+
+func TestGetLatestBuild_MockServer(t *testing.T) {
+	mockBuildJSON := `{
+		"id": 45,
+		"time": "2026-08-30T10:00:00Z",
+		"channel": "default",
+		"downloads": {
+			"server:default": {
+				"name": "paper-26.2-45.jar",
+				"checksums": {"sha256": "abcdef1234567890"},
+				"size": 52428800,
+				"url": "https://download.papermc.io/v3/paper-26.2-45.jar"
+			}
+		}
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(mockBuildJSON))
+	}))
+	defer server.Close()
+
+	origURL := FillAPIBaseURL
+	FillAPIBaseURL = server.URL
+	defer func() { FillAPIBaseURL = origURL }()
+
+	info, err := GetLatestBuild("paper", "26.2")
+	if err != nil {
+		t.Fatalf("GetLatestBuild failed: %v", err)
+	}
+
+	if info.BuildID != 45 || info.FileName != "paper-26.2-45.jar" || info.SHA256 != "abcdef1234567890" {
+		t.Errorf("Unexpected build info: %+v", info)
+	}
+}
+
+

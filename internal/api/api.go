@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Handler struct {
@@ -59,6 +60,25 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 	mcServer.AddListener(func(msg string) {
 		h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
 	})
+
+	// Broadcast live vitals over WebSockets every 1.5 seconds
+	go func() {
+		ticker := time.NewTicker(1500 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			vitals := mcServer.GetVitals()
+			props, err := config.LoadProperties(mcServer.WorkDir)
+			if err == nil && props["level-name"] != "" {
+				vitals.ActiveWorld = props["level-name"]
+			} else {
+				vitals.ActiveWorld = "world"
+			}
+			h.hub.Broadcast(WSMessage{
+				Type: "vitals",
+				Data: vitals,
+			})
+		}
+	}()
 
 	return h
 }

@@ -42,8 +42,30 @@
 - **Strict Migration Requirement:**
   Direct un-versioned schema mutations (such as raw un-tracked `CREATE TABLE` or `ALTER TABLE` statements in store setup) are strictly prohibited.
 - **Migration Engine Registration:**
-  Any schema addition, modification, or data migration must be registered as an incremental version step in [`internal/database/migrations.go`](file:///home/marcin/Development/paperMC_backend/internal/database/migrations.go).
+  Any schema addition, modification, or data migration must be registered as an incremental version step in [`internal/database/migrations.go`](internal/database/migrations.go).
 - **Sequential Versioning:**
   Every migration must have a strictly incremented integer `Version` (e.g. Version 1, Version 2) and execute inside the provided `*sql.Tx` transaction.
 - **Backward Compatibility:**
   Migrations must be non-destructive and backward-compatible with existing production database files.
+
+## 4. Documentation & Plan Synchronization
+
+- **Mandatory README Update:**
+  Always update [`README.md`](README.md) after completing commits so that documentation, endpoints, configuration flags, and architectural summaries accurately reflect the current state of the codebase.
+- **Mandatory Plan Update:**
+  Always update the plan file [`dev_plan.md`](dev_plan.md) after completing commits, checking off completed tasks and updating milestone statuses.
+
+## 5. Mandatory Testing & Test Review Standards
+
+- **Mandatory Tests with Every Addition:**
+  Every new feature, endpoint, database operation, utility function, bug fix, or refactor must include comprehensive automated unit and/or integration tests. No code addition is complete without accompanying tests covering both happy paths and edge/error cases.
+- **Mandatory Test Review on Code Changes:**
+  Whenever existing code is modified or refactored:
+  1. Review and update corresponding existing test suites to prevent test decay or stale assertions.
+  2. Add regression tests specifically reproducing fixed bugs.
+  3. Verify that changes do not decrease statement coverage across the affected packages.
+  4. Ensure all package tests run deterministically and fast with zero race conditions or unclosed resources.
+- **Target Coverage:**
+  Maintain a minimum of 80% statement test coverage across all core internal backend packages (`internal/auth`, `internal/api`, `internal/config`, `internal/database`, `internal/minecraft`, `internal/updater`).
+
+

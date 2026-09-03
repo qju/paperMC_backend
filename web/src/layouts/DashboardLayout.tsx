@@ -1,36 +1,25 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Terminal, Users as UsersIcon, Settings, LogOut, HardDrive, Menu, Activity, Cpu, Zap, Globe, DownloadCloud, Shield } from 'lucide-react';
+import { Terminal, Users as UsersIcon, Settings, LogOut, HardDrive, Menu, Globe, DownloadCloud, Shield } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-
-// 1. Define the Shape of the API Response
-interface Vitals {
-    status: string;
-    cpu: number;
-    ram: number;        // in Bytes (RSS)
-    total_memory: string; // e.g., "4G", "1024M"
-    player_count: number;
-    player_list: Array<{ name: string; uuid: string }>;
-    active_world: string;
-}
+import { useSocket } from '../hooks/useSocket';
+import VitalsPanel from '../components/VitalsPanel';
+import type { Vitals } from '../types';
 
 export default function DashboardLayout() {
     const navigate = useNavigate();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-    // 2. State for Vitals
+    const { liveVitals } = useSocket();
     const [vitals, setVitals] = useState<Vitals | null>(null);
-    const [isPolling] = useState(true);
 
     const handleLogout = useCallback(() => {
         localStorage.removeItem('token');
         navigate('/login');
     }, [navigate]);
 
-    // 3. The Polling Hook
+    // Initial Fetch for instantaneous stats before WebSocket streams
     useEffect(() => {
-        if (!isPolling) return;
-
-        const fetchVitals = async () => {
+        const fetchInitialVitals = async () => {
             const token = localStorage.getItem('token');
             if (!token) {
                 navigate('/login');
@@ -52,43 +41,26 @@ export default function DashboardLayout() {
                     setVitals(data);
                 }
             } catch (err) {
-                console.error("Failed to fetch vitals", err);
+                console.error("Failed to fetch initial vitals", err);
             }
         };
 
-        // Initial fetch
-        fetchVitals();
+        fetchInitialVitals();
+    }, [navigate, handleLogout]);
 
-        // Poll every 1 second
-        const interval = setInterval(fetchVitals, 10000);
-        return () => clearInterval(interval);
-    }, [isPolling, navigate, handleLogout]);
-
-    // 4. Helper to parse RAM string (e.g. "4G" -> 4) for the progress bar
-    const parseMaxRam = (ramStr: string): number => {
-        if (!ramStr) return 1;
-        const value = parseInt(ramStr.slice(0, -1));
-        const unit = ramStr.slice(-1).toUpperCase();
-        if (unit === 'G') return value * 1024 * 1024 * 1024;
-        if (unit === 'M') return value * 1024 * 1024;
-        return value;
-    };
-
-    // Helper to format Bytes to GB
-    const formatBytes = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
-
-    // Calculate Percentages
-    const maxRamBytes = vitals ? parseMaxRam(vitals.total_memory) : 1;
-    const ramPercent = vitals ? Math.min((vitals.ram / maxRamBytes) * 100, 100) : 0;
-    const cpuPercent = vitals ? Math.min(vitals.cpu, 100) : 0;
-    const isOnline = vitals?.status === "Running";
+    // Sync live vitals whenever WebSocket broadcasts a vitals packet
+    useEffect(() => {
+        if (liveVitals) {
+            setVitals(liveVitals);
+        }
+    }, [liveVitals]);
 
     return (
         <div className="flex h-screen overflow-hidden bg-dirt-pattern text-white">
 
             {/* MOBILE HEADER */}
             <div className="md:hidden fixed top-0 w-full h-16 bg-black/90 border-b border-white/10 z-50 flex items-center justify-between px-4">
-                <span className="font-pixel text-2xl text-mc-diamond">PaperMC</span>
+                <span className="font-pixel text-2xl text-mc-diamond">Lodestone</span>
                 <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">
                     <Menu />
                 </button>
@@ -102,7 +74,7 @@ export default function DashboardLayout() {
       `}>
                 <div className="p-6 border-b border-white/10 hidden md:block">
                     <h1 className="font-pixel text-3xl text-mc-diamond tracking-wider drop-shadow-md">
-                        PaperMC
+                        Lodestone
                     </h1>
                     <p className="text-xs text-white/50 font-mono mt-1">Manager v2.0</p>
                 </div>
@@ -129,103 +101,15 @@ export default function DashboardLayout() {
             </aside>
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 overflow-auto relative pt-16 md:pt-0 flex flex-col">
-                <div className="flex-1 p-4 md:p-6 overflow-hidden">
+            <main className="flex-1 overflow-y-auto custom-scrollbar relative pt-16 md:pt-0 flex flex-col min-h-0">
+                <div className="flex-1 p-4 md:p-6 flex flex-col min-h-0">
                     <Outlet />
                 </div>
             </main>
 
-            {/* RIGHT SIDEBAR (Live Vitals) */}
-            <aside className="hidden xl:flex w-80 bg-black/60 backdrop-blur-md border-l border-white/10 flex-col p-6 gap-6">
-
-                <div className="flex items-center gap-2 mb-2 text-mc-gold font-pixel text-xl">
-                    <Activity size={20} />
-                    <span>Server Vitals</span>
-                </div>
-
-                {/* ACTIVE WORLD */}
-                <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
-                    <div className="text-xs text-white/50 mb-1 uppercase tracking-wider flex items-center gap-2">
-                        <Globe size={14} /> Active World
-                    </div>
-                    <div className="font-mono text-lg text-mc-diamond truncate">
-                        {vitals?.active_world || "Loading..."}
-                    </div>
-                </div>
-
-                {/* STATUS */}
-                <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
-                    <div className="text-xs text-white/50 mb-1 uppercase tracking-wider">Status</div>
-                    <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full shadow-[0_0_8px] transition-colors ${isOnline ? 'bg-mc-green shadow-[#55aa55]' : 'bg-red-500 shadow-red-500'}`}></div>
-                        <span className={`font-mono text-lg ${isOnline ? 'text-mc-green' : 'text-red-400'}`}>
-                            {vitals?.status || "Offline"}
-                        </span>
-                    </div>
-                </div>
-
-                {/* RAM */}
-                <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2 text-xs text-white/50 uppercase tracking-wider">
-                            <Zap size={14} /> RAM (RSS)
-                        </div>
-                        <span className="text-xs font-mono text-mc-diamond">
-                            {vitals ? formatBytes(vitals.ram) : 0} GB / {vitals?.total_memory || "?"}
-                        </span>
-                    </div>
-                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-mc-diamond shadow-[0_0_10px_#55ffff] transition-all duration-500"
-                            style={{ width: `${ramPercent}%` }}
-                        ></div>
-                    </div>
-                </div>
-
-                {/* CPU */}
-                <div className="bg-black/40 border border-white/10 p-4 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2 text-xs text-white/50 uppercase tracking-wider">
-                            <Cpu size={14} /> CPU Load
-                        </div>
-                        <span className="text-xs font-mono text-mc-gold">
-                            {vitals?.cpu.toFixed(1) || 0}%
-                        </span>
-                    </div>
-                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-mc-gold shadow-[0_0_10px_#ffaa00] transition-all duration-500"
-                            style={{ width: `${cpuPercent}%` }}
-                        ></div>
-                    </div>
-                </div>
-                {/* ACTIVE PLAYERS LIST */}
-                <div className="flex-1 bg-black/40 border border-white/10 p-4 rounded-lg flex flex-col min-h-0">
-                    <div className="text-xs text-white/50 mb-3 uppercase tracking-wider flex justify-between">
-                        <span>Online Players</span>
-                        <span className="text-mc-green font-mono">{vitals?.player_count || 0}</span>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                        {vitals?.player_list && vitals.player_list.length > 0 ? (
-                            vitals.player_list.map(player => (
-                                <div key={player.name} className="flex items-center gap-3 bg-white/5 p-2 rounded border border-white/5 hover:bg-white/10 transition-colors">
-                                    <img
-                                        src={`https://api.mineatar.io/face/${player.uuid}`}
-                                        alt={player.name}
-                                        className="w-6 h-6 rounded bg-black/50"
-                                    />
-                                    <span className="text-sm font-mono text-white/90">{player.name}</span>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="flex h-full items-center justify-center text-white/20 text-xs italic">
-                                No players online
-                            </div>
-                        )}
-                    </div>
-                </div>
-
+            {/* RIGHT SIDEBAR (Live Modern Vitals) */}
+            <aside className="hidden xl:flex w-84 bg-black/60 backdrop-blur-md border-l border-white/10 flex-col p-5 overflow-hidden">
+                <VitalsPanel vitals={vitals} />
             </aside>
 
             {/* Mobile Overlay */}

@@ -44,7 +44,7 @@ export default function Login() {
             <div className="w-full max-w-md bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-8 space-y-6">
                 <div className="text-center space-y-2">
                     <h1 className="font-pixel text-4xl text-mc-diamond tracking-wider drop-shadow-md">
-                        PaperMC
+                        Lodestone
                     </h1>
                     <p className="text-xs text-white/50 font-mono">
                         Minecraft Server Manager v2.0

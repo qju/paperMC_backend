@@ -1,0 +1,36 @@
+[Unit]
+Description=Lodestone - Modern PaperMC Server Manager
+After=network.target
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/lodestone
+
+# Environment variables (can also be loaded from an EnvironmentFile=/opt/lodestone/.env)
+Environment="PORT=8080"
+Environment="MC_WORKDIR=/opt/lodestone/paperMS"
+Environment="JAR_FILE=server.jar"
+Environment="RAM=8G"
+Environment="DBNAME=/opt/lodestone/paper.db"
+Environment="ADMIN_USER=admin"
+Environment="ADMIN_PASS=ChangeMeImmediately!"
+Environment="JWT_SECRET=ReplaceWithAStrongSecretKeyForProduction"
+
+# Executable location
+ExecStart=/opt/lodestone/lodestone
+
+# Restart policy
+Restart=always
+RestartSec=5s
+
+# Security and resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lodestone
+
+[Install]
+WantedBy=multi-user.target

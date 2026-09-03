@@ -62,7 +62,10 @@ func (h *Handler) HandleSetActiveWorld(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
+	h.applySetActiveWorld(w, req)
+}
 
+func (h *Handler) applySetActiveWorld(w http.ResponseWriter, req SetActiveWorldRequest) {
 	newWorld := strings.TrimSpace(req.WorldName)
 	if newWorld == "" {
 		respondWithError(w, http.StatusBadRequest, "World name cannot be empty")
@@ -200,5 +203,6 @@ func (h *Handler) HandleCreateWorld(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// World creation in Paper is achieved by setting level-name and booting
-	h.HandleSetActiveWorld(w, r)
+	h.applySetActiveWorld(w, req)
 }
+
