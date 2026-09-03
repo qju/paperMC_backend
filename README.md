@@ -186,6 +186,7 @@ journalctl -u lodestone -f
 - [x] Visual Server Configuration Editor (`server.properties`)
 - [ ] Milestone 2.2: Backup Engine & Snapshots
 - [ ] Milestone 2.5: Cron Task Scheduler
+- [ ] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
 - [ ] Milestone 3.2: Modrinth/Hangar Plugin Manager
 
 
