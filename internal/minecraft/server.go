@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"paperMC_backend/internal/database"
+	"paperMC_backend/internal/flags"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -98,6 +99,9 @@ type Server struct {
 	lastTPSUpdate       time.Time
 	internalPollPending int32
 	pollInterval        time.Duration
+
+	// Active launch arguments
+	activeArgs []string
 }
 
 type Vitals struct {
@@ -153,7 +157,29 @@ func (s *Server) Start() error {
 	s.cancel = cancel
 
 	s.status = StatusStarting
-	s.cmd = ExecCommandContext(ctx, "java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
+
+	// Resolve startup flags from DB store if available
+	ram := s.RAM
+	preset := flags.PresetAikar
+	customFlags := ""
+	if s.store != nil {
+		if dbFlags, err := s.store.GetServerFlags(); err == nil && dbFlags != nil {
+			if dbFlags.RAM != "" {
+				ram = dbFlags.RAM
+				s.RAM = dbFlags.RAM
+			}
+			if dbFlags.Preset != "" {
+				preset = dbFlags.Preset
+			}
+			customFlags = dbFlags.CustomFlags
+		}
+	}
+
+	cmdArgs := flags.BuildJavaArgs(ram, preset, customFlags, s.JarFile)
+	s.activeArgs = make([]string, len(cmdArgs))
+	copy(s.activeArgs, cmdArgs)
+
+	s.cmd = ExecCommandContext(ctx, "java", cmdArgs...)
 	s.cmd.Dir = s.WorkDir
 
 	pipeIn, errIn := s.cmd.StdinPipe()
@@ -241,9 +267,14 @@ func (s *Server) monitorProcess() {
 	s.currentTPS = 0
 	s.currentMSPT = 0
 	atomic.StoreInt32(&s.internalPollPending, 0)
+	s.activeArgs = nil
+	cancel := s.cancel
+	s.cancel = nil
 	s.mu.Unlock()
 
-	s.cancel()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (s *Server) GetVitals() Vitals {
@@ -647,6 +678,17 @@ func (s *Server) GetStatus() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.status
+}
+
+func (s *Server) GetActiveArgs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.activeArgs) == 0 {
+		return nil
+	}
+	cp := make([]string, len(s.activeArgs))
+	copy(cp, s.activeArgs)
+	return cp
 }
 
 func NewServer(workDir string, jarFile string, ram string, store database.Store) *Server {

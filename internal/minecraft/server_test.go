@@ -720,4 +720,72 @@ func TestGetVitalsStoppedVsRunningTPS(t *testing.T) {
 	}
 }
 
+func TestServerStartWithSmartFlagsAndActiveArgs(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_flags.db")
+	store, err := database.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	// Configure 12G with Aikar preset in store
+	_ = store.SaveServerFlags(&database.ServerFlags{
+		RAM:         "12G",
+		Preset:      "aikar",
+		CustomFlags: "",
+	})
+
+	server := NewServer(tmpDir, "paper-1.21.jar", "4G", store)
+
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	activeArgs := server.GetActiveArgs()
+	if len(activeArgs) == 0 {
+		t.Fatalf("Expected non-empty activeArgs")
+	}
+
+	// Verify -Xms12G and -Xmx12G were used
+	if activeArgs[0] != "-Xms12G" || activeArgs[1] != "-Xmx12G" {
+		t.Errorf("Expected -Xms12G and -Xmx12G, got %v", activeArgs[:2])
+	}
+
+	// Verify 12G Aikar tuning: -XX:G1NewSizePercent=40
+	found40 := false
+	for _, a := range activeArgs {
+		if a == "-XX:G1NewSizePercent=40" {
+			found40 = true
+			break
+		}
+	}
+	if !found40 {
+		t.Errorf("Expected 12G Aikar flag -XX:G1NewSizePercent=40 in %v", activeArgs)
+	}
+
+	// Stop server
+	_ = server.Stop()
+	_ = server.Kill()
+
+	for i := 0; i < 20; i++ {
+		if server.GetStatus() == StatusStopped {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Verify activeArgs cleared on stop
+	if server.GetActiveArgs() != nil {
+		t.Errorf("Expected activeArgs to be nil when stopped")
+	}
+}
+
 

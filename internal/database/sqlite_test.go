@@ -233,3 +233,42 @@ func TestSQLiteStoreSchedulesAndLogs(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreServerFlags(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_flags.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize SQLite store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Initial seeded server flags from migration v3
+	flags, err := store.GetServerFlags()
+	if err != nil {
+		t.Fatalf("GetServerFlags failed: %v", err)
+	}
+	if flags.RAM != "8G" || flags.Preset != "aikar" {
+		t.Errorf("Expected default 8G and aikar, got %+v", flags)
+	}
+
+	// 2. Save new server flags
+	newFlags := &ServerFlags{
+		RAM:         "16G",
+		Preset:      "aikar",
+		CustomFlags: "-Dmy.custom.flag=true",
+	}
+	if err := store.SaveServerFlags(newFlags); err != nil {
+		t.Fatalf("SaveServerFlags failed: %v", err)
+	}
+
+	// 3. Fetch updated flags
+	updated, err := store.GetServerFlags()
+	if err != nil {
+		t.Fatalf("GetServerFlags after save failed: %v", err)
+	}
+	if updated.RAM != "16G" || updated.Preset != "aikar" || updated.CustomFlags != "-Dmy.custom.flag=true" {
+		t.Errorf("Updated flags mismatch: %+v", updated)
+	}
+}
+

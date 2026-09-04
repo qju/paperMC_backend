@@ -42,6 +42,13 @@ type ScheduleLog struct {
 	ExecutedAt   time.Time `json:"executed_at"`
 }
 
+type ServerFlags struct {
+	RAM         string    `json:"ram"`
+	Preset      string    `json:"preset"`
+	CustomFlags string    `json:"custom_flags"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type Store interface {
 	Migrate() error
 	Close() error
@@ -68,4 +75,8 @@ type Store interface {
 	RecordScheduleExecution(scheduleID int, status string, durationMs int64, errorMessage string) error
 	ListScheduleLogs(scheduleID int, limit int) ([]ScheduleLog, error)
 	ClearScheduleLogs(scheduleID int) error
+
+	// Server Flags & JVM Tuning
+	GetServerFlags() (*ServerFlags, error)
+	SaveServerFlags(flags *ServerFlags) error
 }

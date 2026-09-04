@@ -92,9 +92,15 @@
 ## 🚀 Phase 3: The "Beat Crafty" Features
 *Focus: Specialized Minecraft tools that general-purpose managers lack.*
 
-### Milestone 3.1: Deep Integration
+### Milestone 3.1: Deep Integration & Smart Flags (JVM / Aikar's Flags Optimizer)
 - [ ] **Task:** **Timings Viewer:** Parse `timings report` output.
-- [ ] **Task:** **Smart Flags:** Implement a preset manager for Aikaras flags based on detected system RAM.
+- [x] **Task:** **Smart Flags:** Implement a preset manager for Aikar's flags based on detected/selected RAM:
+  - Database migration v3 (`server_flags` table) tracking RAM, preset (`aikar`, `minimal`, `none`, `custom`), and custom flags.
+  - Dedicated flags engine (`internal/flags`) dynamically tuning G1GC parameters (adapting young gen and reserve thresholds between `<12GB` and `≥12GB`).
+  - Minecraft Server integration tracking `activeArgs` from actual running Java process and detecting pending restarts.
+  - REST API endpoints (`GET /api/flags`, `POST /api/flags`, `GET /api/flags/presets`).
+  - Responsive "Java & Smart Flags" tab in Config Editor with RAM quick selectors, adaptive G1GC notice, preset cards, custom arguments editor, live terminal launch command preview, and active process sync state.
+  - 96.2% test coverage in `internal/flags` and $\ge 80\%$ coverage across all packages with zero race conditions.
 
 ### Milestone 3.2: Plugin Management & Bedrock Bridge (Geyser & Floodgate)
 - [x] **Task:** Implement `internal/plugins` scanner and pure-Go ZIP YAML parser for `plugin.yml` and `paper-plugin.yml`.

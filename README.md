@@ -18,6 +18,7 @@
 - **Backup Engine & Snapshots:** Zero-data-loss snapshots coordinated with Minecraft autosave freezing (`save-off` -> `save-all flush` -> archive -> `save-on`), pure-Go ZIP compression with ZipSlip defense, on-the-fly SHA-256 verification, one-click restoration, and archive downloads.
 - **Automated Task Scheduler & Execution Audit Logs:** Background cron engine (`robfig/cron/v3`) for automated world backups, scheduled server restarts with countdown notifications, maintenance commands, and chat broadcasts, backed by a persistent execution audit log tracking run statuses, durations in milliseconds, and error details.
 - **Plugin Manager & Geyser Bedrock Bridge:** Comprehensive Paper/Spigot plugin control with pure-Go ZIP manifest extraction, enable/disable toggle without file deletion, custom `.jar` upload, and Modrinth v2 marketplace search. Includes a dedicated GeyserMC & Floodgate hub with Bedrock client version compatibility tracking and one-click upstream updates.
+- **Smart Flags & JVM Optimizer:** Dynamic Aikar's G1GC flag tuning based on configured heap RAM (automatically adjusting Young Generation boundaries and reserve thresholds for `<12GB` vs `≥12GB`), presets (`aikar`, `minimal`, `none`, `custom`), active Java arguments tracking, and restart synchronization detection.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -204,6 +205,11 @@ journalctl -u lodestone -f
 - `GET /api/plugins/market/search?query=...`: Search Paper/Spigot plugins on Modrinth v2.
 - `POST /api/plugins/market/install`: One-click install from Modrinth (`{"project_id": "...", "version_id": "..."}`).
 
+### Smart Flags & JVM Optimizer Endpoints
+- `GET /api/flags`: Retrieve configured flags, calculated effective JVM flags, running process arguments, and restart required status.
+- `POST /api/flags`: Save JVM settings (`{"ram": "8G", "preset": "aikar", "custom_flags": "..."}`).
+- `GET /api/flags/presets?ram=...`: Retrieve available optimization presets (`aikar`, `minimal`, `none`, `custom`) and sample flags for the given RAM allocation.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -217,6 +223,7 @@ journalctl -u lodestone -f
 - [x] Milestone 2.2: Backup Engine & Snapshots
 - [x] Milestone 2.5: Cron Task Scheduler & Execution Log Viewer
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
+- [x] Milestone 3.1: Smart Flags & Aikar's JVM Optimizer
 - [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
 
 
