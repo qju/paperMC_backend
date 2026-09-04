@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -325,10 +326,7 @@ func TestHandleLogsSSE(t *testing.T) {
 	// Seed log message
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		select {
-		case mcServer.LogChan <- "Sample log stream line":
-		default:
-		}
+		mcServer.Broadcast("Sample log stream line")
 		time.Sleep(30 * time.Millisecond)
 		cancel()
 	}()
@@ -337,6 +335,61 @@ func TestHandleLogsSSE(t *testing.T) {
 
 	if w.Header().Get("Content-Type") != "text/event-stream" {
 		t.Errorf("Expected Content-Type text/event-stream, got %s", w.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(w.Body.String(), "Sample log stream line") {
+		t.Errorf("Expected SSE body to contain 'Sample log stream line', got: %s", w.Body.String())
+	}
+}
+
+func TestHandleLogsConcurrentSSE(t *testing.T) {
+	tempDir := t.TempDir()
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+
+	req1 := httptest.NewRequest(http.MethodGet, "/logs", nil).WithContext(ctx1)
+	w1 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/logs", nil).WithContext(ctx2)
+	w2 := httptest.NewRecorder()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		handler.HandleLogs(w1, req1)
+	}()
+
+	go func() {
+		defer wg.Done()
+		handler.HandleLogs(w2, req2)
+	}()
+
+	// Allow goroutines to register listeners
+	time.Sleep(30 * time.Millisecond)
+
+	// Broadcast test messages
+	mcServer.Broadcast("Log line alpha")
+	mcServer.Broadcast("Log line beta")
+
+	time.Sleep(30 * time.Millisecond)
+	cancel1()
+	cancel2()
+
+	wg.Wait()
+
+	body1 := w1.Body.String()
+	body2 := w2.Body.String()
+
+	if !strings.Contains(body1, "Log line alpha") || !strings.Contains(body1, "Log line beta") {
+		t.Errorf("Client 1 missed messages, got: %s", body1)
+	}
+	if !strings.Contains(body2, "Log line alpha") || !strings.Contains(body2, "Log line beta") {
+		t.Errorf("Client 2 missed messages, got: %s", body2)
 	}
 }
 

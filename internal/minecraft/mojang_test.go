@@ -3,6 +3,7 @@ package minecraft
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -161,12 +162,18 @@ func TestGetXUID(t *testing.T) {
 		if err == nil {
 			t.Fatal("Expected error for server error")
 		}
+		if !strings.Contains(err.Error(), "geyser API error: 500") {
+			t.Errorf("Expected 'geyser API error: 500', got: %v", err)
+		}
 	})
 
 	t.Run("BadJSON", func(t *testing.T) {
 		_, err := GetXUID("BadJSON")
 		if err == nil {
 			t.Fatal("Expected error for bad JSON")
+		}
+		if !strings.Contains(err.Error(), "invalid JSON") || !strings.Contains(err.Error(), "invalid-json") {
+			t.Errorf("Expected error to contain 'invalid JSON' and response body snippet, got: %v", err)
 		}
 	})
 

@@ -165,7 +165,7 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to start server"+err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Failed to start server: "+err.Error())
 		return
 	}
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server started"})
@@ -178,7 +178,7 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to stop server"+err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Failed to stop server: "+err.Error())
 		return
 	}
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server stopped"})
@@ -191,25 +191,35 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to Kill the server"+err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Failed to Kill the server: "+err.Error())
 		return
 	}
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server Killed"})
 }
 
 func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
 	flusher, ok := w.(http.Flusher)
-	for {
-		if !ok {
-			return
-		}
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch := make(chan string, 100)
+	unsubscribe := h.mc.AddListener(func(msg string) {
 		select {
-		case response := <-h.mc.LogChan:
+		case ch <- msg:
+		default:
+		}
+	})
+	defer unsubscribe()
+
+	for {
+		select {
+		case response := <-ch:
 			fmt.Fprintf(w, "data: %s\n\n", response)
 			flusher.Flush()
 		case <-r.Context().Done():
@@ -236,7 +246,7 @@ func (h *Handler) PostConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := config.SaveProperties(h.mc.WorkDir, data); err != nil {
-		http.Error(w, "Failed to save config"+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to save config: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

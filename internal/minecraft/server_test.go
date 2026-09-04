@@ -369,4 +369,103 @@ func TestServerMonitorProcessExit(t *testing.T) {
 	}
 }
 
+func TestOnlinePlayersClearedOnProcessExit(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+
+	// Populate online players
+	server.mu.Lock()
+	server.OnlinePlayers["Player1"] = Player{UserName: "Player1", UUID: "uuid-1"}
+	server.OnlinePlayers["Player2"] = Player{UserName: "Player2", UUID: "uuid-2"}
+	server.mu.Unlock()
+
+	vitals := server.GetVitals()
+	if vitals.PlayerCount != 2 {
+		t.Fatalf("Expected 2 online players, got %d", vitals.PlayerCount)
+	}
+
+	// Stop server process
+	if err := server.Stop(); err != nil {
+		t.Fatalf("Failed to stop server: %v", err)
+	}
+	_ = server.Kill()
+
+	// Wait for process monitor to exit
+	for i := 0; i < 30; i++ {
+		if server.GetStatus() == StatusStopped {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Verify OnlinePlayers was cleared on exit
+	server.mu.Lock()
+	playerCount := len(server.OnlinePlayers)
+	server.mu.Unlock()
+
+	if playerCount != 0 {
+		t.Errorf("Expected 0 online players after process exit, got %d", playerCount)
+	}
+
+	stoppedVitals := server.GetVitals()
+	if stoppedVitals.PlayerCount != 0 || len(stoppedVitals.PlayerList) != 0 {
+		t.Errorf("Expected GetVitals to report 0 players when stopped, got %d", stoppedVitals.PlayerCount)
+	}
+}
+
+func TestHandleRejectionNilStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil) // nil store
+
+	// Calling handleRejection must not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("handleRejection panicked with nil store: %v", r)
+		}
+	}()
+
+	server.handleRejection("[13:09:40 INFO]: Disconnecting HackerGuy (/127.0.0.1:54321): You are not whitelisted on this server!")
+}
+
+func TestAddListenerUnsubscribe(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	var count int
+	var mu sync.Mutex
+	unsubscribe := server.AddListener(func(msg string) {
+		mu.Lock()
+		defer mu.Unlock()
+		count++
+	})
+
+	server.Broadcast("msg 1")
+	mu.Lock()
+	if count != 1 {
+		t.Errorf("Expected 1 call, got %d", count)
+	}
+	mu.Unlock()
+
+	// Unsubscribe
+	unsubscribe()
+
+	server.Broadcast("msg 2")
+	mu.Lock()
+	if count != 1 {
+		t.Errorf("Expected count to remain 1 after unsubscribe, got %d", count)
+	}
+	mu.Unlock()
+}
+
 

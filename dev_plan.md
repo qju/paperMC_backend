@@ -77,6 +77,12 @@
   - Test log streaming and ANSI parser edge cases: malformed server lines, multi-line exception stack traces, and unicode characters.
   - Test rejected connection logic and player tracking under rapid message bursts.
 - [x] **Task:** Add coverage enforcement and regression gate to verify all internal packages maintain ≥80% coverage.
+- [x] **Task:** Resolve reliability edge cases discovered during testing:
+  - Reset `OnlinePlayers` and active player counts upon process termination or crash in `monitorProcess`.
+  - Provide concurrent subscriber isolation and automatic unsubscription for SSE logs (`/api/logs`).
+  - Correct Geyser API status code attribution and unmarshaling diagnostics in `GetXUID`.
+  - Guard database store against nil pointer panics during console log parsing.
+  - Fix string concatenation formatting in server control error responses.
 
 ---
 

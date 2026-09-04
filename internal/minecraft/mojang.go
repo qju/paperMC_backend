@@ -70,14 +70,16 @@ func GetXUID(gamerTag string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("mojang API error: %d", resp.StatusCode)
+		return "", fmt.Errorf("geyser API error: %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var profile GeyserResponse
-	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
-		// Read the body into a byte slice to print it
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Println(string(bodyBytes))
+	if err := json.Unmarshal(bodyBytes, &profile); err != nil {
 		return "", fmt.Errorf("invalid JSON: %w, response body: %s", err, string(bodyBytes))
 	}
 
