@@ -74,10 +74,11 @@ type Server struct {
 	OnlinePlayers map[string]Player
 
 	// Private fields
-	uuidCache map[string]string
-	listeners []func(string)
-	startTime time.Time
-	history   []MetricPoint
+	uuidCache      map[string]string
+	nextListenerID int
+	listeners      map[int]func(string)
+	startTime      time.Time
+	history        []MetricPoint
 
 	store  database.Store
 	cmd    *exec.Cmd
@@ -212,6 +213,7 @@ func (s *Server) monitorProcess() {
 	s.status = StatusStopped
 	s.proc = nil
 	s.startTime = time.Time{}
+	s.OnlinePlayers = make(map[string]Player)
 	s.mu.Unlock()
 
 	s.cancel()
@@ -359,7 +361,7 @@ func (s *Server) handleRejection(logLine string) {
 	username := CleanString(subParts[1])
 
 	// 2. Persist to DB
-	if username != "" {
+	if username != "" && s.store != nil {
 		s.Broadcast("[WARN] Detected blocked player. Saving to DB user: " + username)
 		if err := s.store.UpsertRejectedPlayer(username); err != nil {
 			s.Broadcast("[Error] Failed to save rejected player: " + err.Error())
@@ -402,10 +404,20 @@ func (s *Server) handleSessionChange(logLine string, joining bool) {
 	}
 }
 
-func (s *Server) AddListener(listener func(string)) {
+func (s *Server) AddListener(listener func(string)) func() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.listeners = append(s.listeners, listener)
+	s.nextListenerID++
+	id := s.nextListenerID
+	if s.listeners == nil {
+		s.listeners = make(map[int]func(string))
+	}
+	s.listeners[id] = listener
+	return func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		delete(s.listeners, id)
+	}
 }
 
 func (s *Server) Broadcast(msg string) {
@@ -415,8 +427,10 @@ func (s *Server) Broadcast(msg string) {
 	if len(s.LogHistory) > 100 {
 		s.LogHistory = s.LogHistory[1:]
 	}
-	currentListeners := make([]func(string), len(s.listeners))
-	copy(currentListeners, s.listeners)
+	currentListeners := make([]func(string), 0, len(s.listeners))
+	for _, listener := range s.listeners {
+		currentListeners = append(currentListeners, listener)
+	}
 	s.mu.Unlock()
 
 	// Notify registered listeners (e.g. WebSocket Hub)
@@ -475,7 +489,7 @@ func NewServer(workDir string, jarFile string, ram string, store database.Store)
 		LogChan:       make(chan string),
 		LogHistory:    make([]string, 0),
 		history:       make([]MetricPoint, 0, 30),
-		listeners:     make([]func(string), 0),
+		listeners:     make(map[int]func(string)),
 		status:        StatusStopped,
 		store:         store,
 		OnlinePlayers: make(map[string]Player),
