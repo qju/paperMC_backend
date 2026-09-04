@@ -168,19 +168,7 @@ func main() {
 		mux.Handle(path, auth.AuthMiddleware(handler))
 	}
 
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// try to server the requested file (e.g., /assets/style.css)
-		path := strings.TrimPrefix(r.URL.Path, "/")
-
-		file, err := distFS.Open(path)
-		if err != nil {
-			r.URL.Path = "/"
-		} else {
-			file.Close()
-		}
-		fileserver.ServeHTTP(w, r)
-
-	}))
+	mux.Handle("/", spaHandler(distFS, fileserver))
 
 	go func() {
 		log.Printf("Server starting on port: %s", cfg.Port)
@@ -198,4 +186,26 @@ func main() {
 		log.Printf("Error stopping the server: %v", err)
 	}
 	fmt.Printf("Server stopped gracefully [%v]", sig)
+}
+
+// spaHandler returns an http.HandlerFunc serving static files for the SPA,
+// while ensuring any unmatched /api routes return JSON 404 instead of index.html.
+func spaHandler(distFS fs.FS, fileserver http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/api" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"API route not found"}`))
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		file, err := distFS.Open(path)
+		if err != nil {
+			r.URL.Path = "/"
+		} else {
+			file.Close()
+		}
+		fileserver.ServeHTTP(w, r)
+	}
 }
