@@ -168,20 +168,28 @@ export default function ConfigEditor() {
             ]);
 
             if (flagsRes.ok) {
-                const data: FlagsStatusResponse = await flagsRes.json();
-                setFlagsStatus(data);
-                if (data.configured) {
-                    setSelectedRam(data.configured.ram || '8G');
-                    setSelectedPreset(data.configured.preset || 'aikar');
-                    setCustomFlagsText(data.configured.custom_flags || '');
+                const ct = flagsRes.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    const data: FlagsStatusResponse = await flagsRes.json();
+                    setFlagsStatus(data);
+                    if (data.configured) {
+                        setSelectedRam(data.configured.ram || '8G');
+                        setSelectedPreset(data.configured.preset || 'aikar');
+                        setCustomFlagsText(data.configured.custom_flags || '');
+                    }
+                } else {
+                    console.warn("Received non-JSON response from /api/flags. The backend server might need a restart.");
                 }
             } else {
                 showToast("Failed to load Java & Smart Flags", 'error');
             }
 
             if (presetsRes.ok) {
-                const presetsData: FlagPresetInfo[] = await presetsRes.json();
-                setFlagPresets(presetsData);
+                const ct = presetsRes.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    const presetsData: FlagPresetInfo[] = await presetsRes.json();
+                    setFlagPresets(presetsData);
+                }
             }
         } catch (err) {
             console.error("Failed to load flags", err);
