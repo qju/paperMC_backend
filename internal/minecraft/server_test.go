@@ -2,6 +2,7 @@ package minecraft
 
 import (
 	"context"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -650,11 +651,22 @@ func TestQueryTPSAndPollVitalsLifecycle(t *testing.T) {
 		t.Errorf("Expected 0 pending polls when server is stopped")
 	}
 
-	// 2. Running server queries TPS
+	// 2. Running server that is not ready does NOT query TPS
 	mockIn := &mockBufferCloser{}
 	server.stdin = mockIn
 	server.status = StatusRunning
+	server.SetReady(false)
 
+	server.queryTPS()
+	if atomic.LoadInt32(&server.internalPollPending) != 0 {
+		t.Errorf("Expected 0 pending polls when server is not ready")
+	}
+	if strings.Contains(mockIn.String(), "tps\n") {
+		t.Errorf("Expected no 'tps\\n' sent when server is not ready, got: %s", mockIn.String())
+	}
+
+	// 3. Ready running server queries TPS
+	server.SetReady(true)
 	server.queryTPS()
 	if atomic.LoadInt32(&server.internalPollPending) != 1 {
 		t.Errorf("Expected 1 pending poll, got %d", atomic.LoadInt32(&server.internalPollPending))
@@ -785,6 +797,60 @@ func TestServerStartWithSmartFlagsAndActiveArgs(t *testing.T) {
 	// Verify activeArgs cleared on stop
 	if server.GetActiveArgs() != nil {
 		t.Errorf("Expected activeArgs to be nil when stopped")
+	}
+}
+
+func TestServerReadinessAndStartupDoneDetection(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+
+	// 1. Initially not ready
+	if server.IsReady() {
+		t.Errorf("Expected server to initially not be ready")
+	}
+
+	// 2. When server process is running but not ready, GetVitals reports StatusStarting
+	server.status = StatusRunning
+	server.SetReady(false)
+	vitals := server.GetVitals()
+	if vitals.Status != StatusStarting {
+		t.Errorf("Expected StatusStarting in vitals before Done message, got %v", vitals.Status)
+	}
+
+	// 3. Stdin attached, queryTPS should NOT send anything while not ready
+	mockIn := &mockBufferCloser{}
+	server.stdin = mockIn
+	server.queryTPS()
+	if strings.Contains(mockIn.String(), "tps") {
+		t.Errorf("Expected queryTPS to be suppressed when not ready, got %s", mockIn.String())
+	}
+
+	// 4. StreamLogs reads "Done (10.985s)! For help, type 'help'" and marks server ready
+	pipeR, pipeW := io.Pipe()
+	server.stdout = pipeR
+
+	doneChan := make(chan struct{})
+	go func() {
+		server.StreamLogs()
+		close(doneChan)
+	}()
+
+	// Write the Done startup message
+	go func() {
+		_, _ = pipeW.Write([]byte("[15:16:01 INFO]: Done (10.985s)! For help, type \"help\"\n"))
+		_ = pipeW.Close()
+	}()
+
+	<-doneChan
+
+	if !server.IsReady() {
+		t.Errorf("Expected server to be marked ready after Done message")
+	}
+
+	// 5. Vitals now report StatusRunning
+	vitalsAfter := server.GetVitals()
+	if vitalsAfter.Status != StatusRunning {
+		t.Errorf("Expected StatusRunning in vitals after Done message, got %v", vitalsAfter.Status)
 	}
 }
 
