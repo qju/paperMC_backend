@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -188,5 +190,104 @@ func TestPlayersAPI(t *testing.T) {
 			t.Errorf("Expected 500 when oping on stopped server, got %d", opRec.Code)
 		}
 	})
+}
+
+func TestPlayersExecutionEndpoints(t *testing.T) {
+	tempDir := t.TempDir()
+	store, _ := database.NewSQLiteStore(filepath.Join(tempDir, "test.db"))
+	defer store.Close()
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", store)
+	handler := NewServerHandler(mcServer, store)
+
+	// 1. Remove player stopped server
+	reqRem := httptest.NewRequest(http.MethodDelete, "/api/players?username=Steve", nil)
+	wRem := httptest.NewRecorder()
+	handler.HandleRemovePlayer(wRem, reqRem)
+	if wRem.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 removing player from stopped server, got %d", wRem.Code)
+	}
+
+	// 2. Ban player stopped server
+	reqBan := httptest.NewRequest(http.MethodPost, "/api/players/banned", bytes.NewReader([]byte(`{"username":"Griefer","reason":"cheat"}`)))
+	wBan := httptest.NewRecorder()
+	handler.HandleBanPlayer(wBan, reqBan)
+	if wBan.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 banning player on stopped server, got %d", wBan.Code)
+	}
+
+	// 3. Unban player stopped server
+	reqUnban := httptest.NewRequest(http.MethodDelete, "/api/players/banned?username=Griefer", nil)
+	wUnban := httptest.NewRecorder()
+	handler.HandleUnbanPlayer(wUnban, reqUnban)
+	if wUnban.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 unbanning player on stopped server, got %d", wUnban.Code)
+	}
+
+	// 4. Op player action=remove
+	reqDeop := httptest.NewRequest(http.MethodPost, "/api/players/ops?action=remove", bytes.NewReader([]byte(`{"username":"Admin"}`)))
+	wDeop := httptest.NewRecorder()
+	handler.HandleOpPlayer(wDeop, reqDeop)
+	if wDeop.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 deoping on stopped server, got %d", wDeop.Code)
+	}
+
+	// 5. Op player invalid action on stopped server returns 500
+	reqBadAction := httptest.NewRequest(http.MethodPost, "/api/players/ops?action=invalid", bytes.NewReader([]byte(`{"username":"Admin"}`)))
+	wBadAction := httptest.NewRecorder()
+	handler.HandleOpPlayer(wBadAction, reqBadAction)
+	if wBadAction.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 on stopped server, got %d", wBadAction.Code)
+	}
+
+	// 6. Op player empty username on stopped server returns 500
+	reqNoUser := httptest.NewRequest(http.MethodPost, "/api/players/ops?action=add", bytes.NewReader([]byte(`{"username":""}`)))
+	wNoUser := httptest.NewRecorder()
+	handler.HandleOpPlayer(wNoUser, reqNoUser)
+	if wNoUser.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 on stopped server, got %d", wNoUser.Code)
+	}
+
+	// 7. Add player running server with mock Mojang
+	origMojang := minecraft.MojangBaseURL
+	defer func() { minecraft.MojangBaseURL = origMojang }()
+
+	origExec := minecraft.ExecCommandContext
+	defer func() { minecraft.ExecCommandContext = origExec }()
+
+	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	mockMojang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"name":"Alex","id":"alex-uuid"}`))
+	}))
+	defer mockMojang.Close()
+	minecraft.MojangBaseURL = mockMojang.URL
+
+	if err := mcServer.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+	defer mcServer.Kill()
+
+	// Seed rejected player
+	_ = store.UpsertRejectedPlayer("Alex")
+
+	reqAdd := httptest.NewRequest(http.MethodPost, "/api/players", bytes.NewReader([]byte(`{"username":"Alex"}`)))
+	wAdd := httptest.NewRecorder()
+	handler.HandleAddPlayer(wAdd, reqAdd)
+
+	if wAdd.Code != http.StatusOK {
+		t.Errorf("Expected 200 adding player on running server, got %d: %s", wAdd.Code, wAdd.Body.String())
+	}
+
+	// Verify Alex was removed from rejected list
+	rejections, _ := store.GetRejectedPlayers()
+	for _, rej := range rejections {
+		if rej.Username == "Alex" {
+			t.Errorf("Expected Alex to be removed from rejected players")
+		}
+	}
 }
 

@@ -27,6 +27,8 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
+var ExecCommandContext = exec.CommandContext
+
 type Status int
 
 const (
@@ -133,7 +135,7 @@ func (s *Server) Start() error {
 	s.cancel = cancel
 
 	s.status = StatusStarting
-	s.cmd = exec.CommandContext(ctx, "java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
+	s.cmd = ExecCommandContext(ctx, "java", "-Xmx"+s.RAM, "-Xms"+s.RAM, "-jar", s.JarFile, "nogui")
 	s.cmd.Dir = s.WorkDir
 
 	pipeIn, errIn := s.cmd.StdinPipe()

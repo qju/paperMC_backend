@@ -2,6 +2,8 @@ package minecraft
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,5 +89,76 @@ func TestPlayerCommandMethodsWhenStopped(t *testing.T) {
 	}
 	if err := server.DeopUser("testuser"); err == nil {
 		t.Errorf("Expected error sending deop when stopped, got nil")
+	}
+}
+
+func TestWhiteListUser(t *testing.T) {
+	origMojang := MojangBaseURL
+	origGeyser := GeyserBaseURL
+	defer func() {
+		MojangBaseURL = origMojang
+		GeyserBaseURL = origGeyser
+	}()
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+
+	// Mock Mojang & Geyser APIs
+	mockMojang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/users/profiles/minecraft/JavaUser" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"name":"JavaUser","id":"java-uuid-123"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockMojang.Close()
+
+	mockGeyser := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/xbox/xuid/BedrockUser" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"xuid":9988776655}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockGeyser.Close()
+
+	MojangBaseURL = mockMojang.URL
+	GeyserBaseURL = mockGeyser.URL
+
+	// 1. Java User: Mojang matches -> sends whitelist add (returns stopped error)
+	errJava := server.WhiteListUser("JavaUser")
+	if errJava == nil || errJava.Error() != "server is already stopped" {
+		t.Errorf("Expected stopped error for JavaUser, got: %v", errJava)
+	}
+
+	// 2. Bedrock User: Geyser matches -> sends fwhitelist add (returns stopped error)
+	errBedrock := server.WhiteListUser("BedrockUser")
+	if errBedrock == nil || errBedrock.Error() != "server is already stopped" {
+		t.Errorf("Expected stopped error for BedrockUser, got: %v", errBedrock)
+	}
+
+	// 3. Bedrock User with prefix
+	errBedrockPrefix := server.WhiteListUser("*BedrockUser")
+	if errBedrockPrefix == nil || errBedrockPrefix.Error() != "server is already stopped" {
+		t.Errorf("Expected stopped error for *BedrockUser, got: %v", errBedrockPrefix)
+	}
+
+	// 4. Unknown User: Neither matches -> returns user not found
+	errUnknown := server.WhiteListUser("GhostUser")
+	if errUnknown == nil || errUnknown.Error() != "user not found on Mojang or Xbox Live" {
+		t.Errorf("Expected user not found error for GhostUser, got: %v", errUnknown)
+	}
+}
+
+func TestBanUserDefaultReason(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+
+	// Ban with empty reason
+	err := server.BanUser("spammer", "")
+	if err == nil || err.Error() != "server is already stopped" {
+		t.Errorf("Expected stopped error, got: %v", err)
 	}
 }
