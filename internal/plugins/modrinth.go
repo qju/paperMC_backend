@@ -127,9 +127,15 @@ func (m *ModrinthClient) InstallPlugin(pluginsDir, projectID, versionID string) 
 	}
 
 	var targetVer ModrinthVersion
+	var targetFile *ModrinthFile
+
 	if strings.TrimSpace(versionID) == "" {
-		// Fetch versions for project
-		reqURL := fmt.Sprintf("%s/project/%s/version?loaders=[\"paper\",\"spigot\",\"purpur\"]", m.BaseURL, projectID)
+		// Fetch versions for project with compatible server loaders (properly URL-encoded)
+		loadersJSON := `["paper","spigot","purpur","bukkit","folia"]`
+		params := url.Values{}
+		params.Set("loaders", loadersJSON)
+
+		reqURL := fmt.Sprintf("%s/project/%s/version?%s", m.BaseURL, url.PathEscape(projectID), params.Encode())
 		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 		if err != nil {
 			return nil, err
@@ -151,13 +157,47 @@ func (m *ModrinthClient) InstallPlugin(pluginsDir, projectID, versionID string) 
 			return nil, fmt.Errorf("failed to decode versions list: %w", err)
 		}
 
+		// Fallback: If no versions matched the strict loader filter, query all releases for this project
+		if len(versions) == 0 {
+			fallbackURL := fmt.Sprintf("%s/project/%s/version", m.BaseURL, url.PathEscape(projectID))
+			fallbackReq, err := http.NewRequest(http.MethodGet, fallbackURL, nil)
+			if err == nil {
+				fallbackReq.Header.Set("User-Agent", "Lodestone-Minecraft-Manager/2.0")
+				if fallbackResp, err := m.HTTPClient.Do(fallbackReq); err == nil {
+					defer fallbackResp.Body.Close()
+					if fallbackResp.StatusCode == http.StatusOK {
+						_ = json.NewDecoder(fallbackResp.Body).Decode(&versions)
+					}
+				}
+			}
+		}
+
 		if len(versions) == 0 {
 			return nil, fmt.Errorf("no compatible versions found for project %s", projectID)
 		}
 
-		targetVer = versions[0]
+		// Pick the first version that contains a downloadable .jar file
+		for i := range versions {
+			v := &versions[i]
+			for j := range v.Files {
+				f := &v.Files[j]
+				if strings.HasSuffix(strings.ToLower(f.Filename), ".jar") {
+					if f.Primary || targetFile == nil {
+						targetFile = f
+						targetVer = *v
+					}
+				}
+			}
+			if targetFile != nil {
+				break
+			}
+		}
+
+		if targetFile == nil {
+			return nil, fmt.Errorf("no downloadable jar file found for project %s", projectID)
+		}
 	} else {
-		reqURL := fmt.Sprintf("%s/version/%s", m.BaseURL, versionID)
+		reqURL := fmt.Sprintf("%s/version/%s", m.BaseURL, url.PathEscape(versionID))
 		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 		if err != nil {
 			return nil, err
@@ -177,20 +217,19 @@ func (m *ModrinthClient) InstallPlugin(pluginsDir, projectID, versionID string) 
 		if err := json.NewDecoder(resp.Body).Decode(&targetVer); err != nil {
 			return nil, fmt.Errorf("failed to decode version info: %w", err)
 		}
-	}
 
-	var targetFile *ModrinthFile
-	for i := range targetVer.Files {
-		f := &targetVer.Files[i]
-		if strings.HasSuffix(strings.ToLower(f.Filename), ".jar") {
-			if f.Primary || targetFile == nil {
-				targetFile = f
+		for i := range targetVer.Files {
+			f := &targetVer.Files[i]
+			if strings.HasSuffix(strings.ToLower(f.Filename), ".jar") {
+				if f.Primary || targetFile == nil {
+					targetFile = f
+				}
 			}
 		}
-	}
 
-	if targetFile == nil {
-		return nil, fmt.Errorf("no downloadable jar file found in release %s", targetVer.Name)
+		if targetFile == nil {
+			return nil, fmt.Errorf("no downloadable jar file found in release %s", targetVer.Name)
+		}
 	}
 
 	// Download file
