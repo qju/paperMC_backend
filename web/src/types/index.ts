@@ -87,4 +87,81 @@ export interface ScheduleLog {
     executed_at: string;
 }
 
+export interface PluginInfo {
+    filename: string;
+    name: string;
+    version: string;
+    main?: string;
+    description?: string;
+    authors?: string[];
+    website?: string;
+    api_version?: string;
+    dependencies?: string[];
+    soft_dependencies?: string[];
+    is_enabled: boolean;
+    size_bytes: number;
+    formatted_size: string;
+    mod_time: string;
+}
+
+export interface GeyserStatus {
+    installed: boolean;
+    installed_file?: string;
+    installed_version?: string;
+    installed_build?: number;
+    installed_sha256?: string;
+    is_enabled: boolean;
+    latest_version: string;
+    latest_build: number;
+    latest_sha256: string;
+    update_available: boolean;
+    supported_bedrock: string;
+    latest_bedrock_ver: string;
+    recent_changes?: string[];
+    release_date: string;
+}
+
+export interface FloodgateStatus {
+    installed: boolean;
+    installed_file?: string;
+    installed_version?: string;
+    installed_build?: number;
+    installed_sha256?: string;
+    is_enabled: boolean;
+    latest_version: string;
+    latest_build: number;
+    latest_sha256: string;
+    update_available: boolean;
+    recent_changes?: string[];
+    release_date: string;
+}
+
+export interface BedrockBridgeStatus {
+    geyser: GeyserStatus;
+    floodgate: FloodgateStatus;
+    overall_status: 'ready' | 'update_available' | 'incomplete' | 'missing' | string;
+    bedrock_support_info: string;
+}
+
+export interface ModrinthHit {
+    project_id: string;
+    slug: string;
+    title: string;
+    description: string;
+    categories: string[];
+    icon_url: string;
+    author: string;
+    downloads: number;
+    followers: number;
+    date_modified: string;
+    latest_version: string;
+}
+
+export interface ModrinthSearchResult {
+    hits: ModrinthHit[];
+    total_hits: number;
+    limit: number;
+    offset: number;
+}
+
 

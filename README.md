@@ -17,6 +17,7 @@
 - **Server Configuration Editor:** Categorized visual controls (General, Gameplay, Security, Performance, RCON) and raw editor with comment preservation for `server.properties`.
 - **Backup Engine & Snapshots:** Zero-data-loss snapshots coordinated with Minecraft autosave freezing (`save-off` -> `save-all flush` -> archive -> `save-on`), pure-Go ZIP compression with ZipSlip defense, on-the-fly SHA-256 verification, one-click restoration, and archive downloads.
 - **Automated Task Scheduler & Execution Audit Logs:** Background cron engine (`robfig/cron/v3`) for automated world backups, scheduled server restarts with countdown notifications, maintenance commands, and chat broadcasts, backed by a persistent execution audit log tracking run statuses, durations in milliseconds, and error details.
+- **Plugin Manager & Geyser Bedrock Bridge:** Comprehensive Paper/Spigot plugin control with pure-Go ZIP manifest extraction, enable/disable toggle without file deletion, custom `.jar` upload, and Modrinth v2 marketplace search. Includes a dedicated GeyserMC & Floodgate hub with Bedrock client version compatibility tracking and one-click upstream updates.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -193,6 +194,16 @@ journalctl -u lodestone -f
 - `GET /api/schedules/logs?schedule_id=...&limit=...`: Retrieve historical execution audit logs with run durations and error traces.
 - `DELETE /api/schedules/logs?schedule_id=...`: Purge historical execution audit logs.
 
+### Plugin Management & Bedrock Bridge Endpoints
+- `GET /api/plugins`: List installed plugins with extracted metadata, file sizes, and active/disabled states.
+- `POST /api/plugins/toggle`: Toggle plugin between active (`.jar`) and disabled (`.jar.disabled`).
+- `DELETE /api/plugins?filename=...`: Delete plugin file safely.
+- `POST /api/plugins/upload`: Multipart file upload for custom `.jar` plugins.
+- `GET /api/plugins/geyser/status`: Bedrock Bridge status report: installed vs latest upstream Geyser & Floodgate builds, SHA-256 hashes, and supported Bedrock version compatibility.
+- `POST /api/plugins/geyser/update`: One-click update/install for Geyser, Floodgate, or both (`{"target": "geyser"|"floodgate"|"both"}`).
+- `GET /api/plugins/market/search?query=...`: Search Paper/Spigot plugins on Modrinth v2.
+- `POST /api/plugins/market/install`: One-click install from Modrinth (`{"project_id": "...", "version_id": "..."}`).
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -206,7 +217,7 @@ journalctl -u lodestone -f
 - [x] Milestone 2.2: Backup Engine & Snapshots
 - [x] Milestone 2.5: Cron Task Scheduler & Execution Log Viewer
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
-- [ ] Milestone 3.2: Modrinth/Hangar Plugin Manager
+- [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
 
 
 ## License
