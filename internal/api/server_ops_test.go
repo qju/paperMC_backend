@@ -2,12 +2,19 @@ package api
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
@@ -207,6 +214,239 @@ func TestServerOperationsAPI(t *testing.T) {
 			t.Errorf("Expected 200 OK fetching versions, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+func TestServerLifecycleEndpoints(t *testing.T) {
+	origExec := minecraft.ExecCommandContext
+	defer func() { minecraft.ExecCommandContext = origExec }()
+
+	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	tempDir := t.TempDir()
+	store, _ := database.NewSQLiteStore(filepath.Join(tempDir, "test.db"))
+	defer store.Close()
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", store)
+	handler := NewServerHandler(mcServer, store)
+
+	// 1. POST /start
+	reqStart := httptest.NewRequest(http.MethodPost, "/start", nil)
+	wStart := httptest.NewRecorder()
+	handler.Start(wStart, reqStart)
+
+	if wStart.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK starting server, got %d: %s", wStart.Code, wStart.Body.String())
+	}
+
+	// 2. POST /start while already running fails with 400
+	wStartAgain := httptest.NewRecorder()
+	handler.Start(wStartAgain, reqStart)
+	if wStartAgain.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 starting already running server, got %d", wStartAgain.Code)
+	}
+
+	// 3. POST /command while running succeeds with 200
+	reqCmd := httptest.NewRequest(http.MethodPost, "/command", bytes.NewReader([]byte(`{"command":"say hello"}`)))
+	wCmd := httptest.NewRecorder()
+	handler.SendCommand(wCmd, reqCmd)
+	if wCmd.Code != http.StatusOK {
+		t.Errorf("Expected 200 sending command to running server, got %d", wCmd.Code)
+	}
+
+	// 4. POST /stop while running
+	reqStop := httptest.NewRequest(http.MethodPost, "/stop", nil)
+	wStop := httptest.NewRecorder()
+	handler.Stop(wStop, reqStop)
+	if wStop.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK stopping running server, got %d: %s", wStop.Code, wStop.Body.String())
+	}
+
+	// 5. Test POST /kill while running/stopping
+	reqKill := httptest.NewRequest(http.MethodPost, "/kill", nil)
+	wKill := httptest.NewRecorder()
+	handler.Kill(wKill, reqKill)
+	if wKill.Code != http.StatusOK {
+		t.Errorf("Expected 200 killing running server, got %d: %s", wKill.Code, wKill.Body.String())
+	}
+
+	// Wait for process monitor to reach stopped
+	for i := 0; i < 20; i++ {
+		if mcServer.GetStatus() == minecraft.StatusStopped {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// 6. Test POST /kill when already stopped
+	wKillStopped := httptest.NewRecorder()
+	handler.Kill(wKillStopped, reqKill)
+	if wKillStopped.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 killing stopped server, got %d", wKillStopped.Code)
+	}
+
+	// 7. POST /whitelist_add with mock Mojang on running server
+	origMojang := minecraft.MojangBaseURL
+	defer func() { minecraft.MojangBaseURL = origMojang }()
+	mockMojang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"name":"Alex","id":"alex-uuid"}`))
+	}))
+	defer mockMojang.Close()
+	minecraft.MojangBaseURL = mockMojang.URL
+
+	wStart3 := httptest.NewRecorder()
+	handler.Start(wStart3, reqStart)
+	if wStart3.Code != http.StatusOK {
+		t.Fatalf("Expected 200 starting server for whitelist test, got %d", wStart3.Code)
+	}
+	defer mcServer.Kill()
+
+	reqWl := httptest.NewRequest(http.MethodPost, "/whitelist_add", bytes.NewReader([]byte(`{"command":"Alex"}`)))
+	wWl := httptest.NewRecorder()
+	handler.WhiteListing(wWl, reqWl)
+	if wWl.Code != http.StatusOK {
+		t.Errorf("Expected 200 on WhiteListing, got %d: %s", wWl.Code, wWl.Body.String())
+	}
+}
+
+func TestHandleLogsSSE(t *testing.T) {
+	tempDir := t.TempDir()
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := httptest.NewRequest(http.MethodGet, "/logs", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	// Seed log message
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		select {
+		case mcServer.LogChan <- "Sample log stream line":
+		default:
+		}
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+
+	handler.HandleLogs(w, req)
+
+	if w.Header().Get("Content-Type") != "text/event-stream" {
+		t.Errorf("Expected Content-Type text/event-stream, got %s", w.Header().Get("Content-Type"))
+	}
+}
+
+func TestUpdaterAPIExecution(t *testing.T) {
+	tempDir := t.TempDir()
+	store, _ := database.NewSQLiteStore(filepath.Join(tempDir, "test.db"))
+	defer store.Close()
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", store)
+	handler := NewServerHandler(mcServer, store)
+
+	// Mock file content and hash
+	mockJarBytes := []byte("mock-jar-content-12345")
+	h := sha256.Sum256(mockJarBytes)
+	validHash := hex.EncodeToString(h[:])
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/builds/latest") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			mockBuildJSON := fmt.Sprintf(`{
+				"id": 100,
+				"channel": "STABLE",
+				"version": "26.2",
+				"downloads": {
+					"server:default": {
+						"name": "paper-26.2-100.jar",
+						"url": "http://%s/download",
+						"checksums": {
+							"sha256": "%s"
+						},
+						"size": %d
+					}
+				}
+			}`, r.Host, validHash, len(mockJarBytes))
+			_, _ = w.Write([]byte(mockBuildJSON))
+			return
+		}
+		if strings.Contains(r.URL.Path, "/download") {
+			w.Header().Set("Content-Type", "application/java-archive")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(mockJarBytes)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	origURL := updater.FillAPIBaseURL
+	updater.FillAPIBaseURL = mockServer.URL
+	defer func() { updater.FillAPIBaseURL = origURL }()
+
+	// 1. GET /api/updater/check
+	reqCheck := httptest.NewRequest(http.MethodGet, "/api/updater/check?version=26.2", nil)
+	wCheck := httptest.NewRecorder()
+	handler.HandleCheckUpdate(wCheck, reqCheck)
+
+	if wCheck.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on CheckUpdate, got %d: %s", wCheck.Code, wCheck.Body.String())
+	}
+	var checkResp CheckUpdateResponse
+	_ = json.NewDecoder(wCheck.Body).Decode(&checkResp)
+	if checkResp.LatestBuild != 100 || checkResp.LatestHash != validHash {
+		t.Errorf("Unexpected check response: %+v", checkResp)
+	}
+
+	// 2. POST /api/updater/apply (Success download)
+	reqApply := httptest.NewRequest(http.MethodPost, "/api/updater/apply", bytes.NewReader([]byte(`{"version":"26.2"}`)))
+	wApply := httptest.NewRecorder()
+	handler.HandleUpdate(wApply, reqApply)
+
+	if wApply.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on HandleUpdate, got %d: %s", wApply.Code, wApply.Body.String())
+	}
+
+	// 3. POST /api/updater/apply (Already up to date)
+	wApplyAgain := httptest.NewRecorder()
+	reqApplyAgain := httptest.NewRequest(http.MethodPost, "/api/updater/apply", bytes.NewReader([]byte(`{"version":"26.2"}`)))
+	handler.HandleUpdate(wApplyAgain, reqApplyAgain)
+
+	if wApplyAgain.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on already installed build, got %d: %s", wApplyAgain.Code, wApplyAgain.Body.String())
+	}
+	var upToDateResp map[string]interface{}
+	_ = json.NewDecoder(wApplyAgain.Body).Decode(&upToDateResp)
+	if upToDateResp["status"] != "up_to_date" {
+		t.Errorf("Expected status up_to_date, got %v", upToDateResp["status"])
+	}
+
+	// 4. Concurrent update conflict (mutex lock)
+	handler.updateMu.Lock()
+	wConflict := httptest.NewRecorder()
+	handler.HandleUpdate(wConflict, reqApply)
+	handler.updateMu.Unlock()
+	if wConflict.Code != http.StatusConflict {
+		t.Errorf("Expected 409 Conflict when update is in progress, got %d", wConflict.Code)
+	}
+
+	// 5. Check error path when updater returns 500
+	errorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer errorServer.Close()
+	updater.FillAPIBaseURL = errorServer.URL
+
+	wCheckErr := httptest.NewRecorder()
+	handler.HandleCheckUpdate(wCheckErr, reqCheck)
+	if wCheckErr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 when remote updater errors, got %d", wCheckErr.Code)
+	}
 }
 
 

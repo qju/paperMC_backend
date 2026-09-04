@@ -68,15 +68,15 @@
 - [ ] **Task:** Build logic to trigger internal functions (Restart, Backup, Broadcast) from Cron.
 
 ### Milestone 2.6: Comprehensive Test Coverage & Reliability Gate (Pre-v1.0 Gate)
-- [ ] **Task:** Elevate `internal/api` statement test coverage from 46.8% to ≥80%:
+- [x] **Task:** Elevate `internal/api` statement test coverage from 46.8% to ≥80%:
   - Test missing query parameter validation, routing error fallbacks, and malformed request payload handling.
   - Test WebSocket connection close/reconnect lifecycles, unauthorized handshake rejections, and hub registration failure modes.
   - Test world management edge-cases (invalid active world requests, non-existent world deletion, clone failure scenarios).
-- [ ] **Task:** Elevate `internal/minecraft` statement test coverage from 63.5% to ≥80%:
+- [x] **Task:** Elevate `internal/minecraft` statement test coverage from 63.5% to ≥80%:
   - Test server process lifecycle edge cases: sudden exit detection, crash-loop detection, and graceful shutdown timeouts.
   - Test log streaming and ANSI parser edge cases: malformed server lines, multi-line exception stack traces, and unicode characters.
   - Test rejected connection logic and player tracking under rapid message bursts.
-- [ ] **Task:** Add coverage enforcement and regression gate to verify all internal packages maintain ≥80% coverage.
+- [x] **Task:** Add coverage enforcement and regression gate to verify all internal packages maintain ≥80% coverage.
 
 ---
 

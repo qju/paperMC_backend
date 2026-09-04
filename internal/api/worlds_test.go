@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -138,5 +140,106 @@ func TestWorldsAPIHandlers(t *testing.T) {
 			t.Errorf("Expected 400 on empty delete name, got %d", wEmptyDel.Code)
 		}
 	})
+}
+
+func TestWorldsAdditionalValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tempDir, "server.properties"), []byte("level-name=world\n"), 0644)
+
+	mcServer := &minecraft.Server{
+		WorkDir: tempDir,
+		JarFile: "server.jar",
+		RAM:     "2G",
+	}
+	handler := NewServerHandler(mcServer, nil)
+
+	// 1. SetActiveWorld invalid JSON
+	badJSON := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader([]byte(`not-json`)))
+	wBadJSON := httptest.NewRecorder()
+	handler.HandleSetActiveWorld(wBadJSON, badJSON)
+	if wBadJSON.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on bad JSON in SetActiveWorld, got %d", wBadJSON.Code)
+	}
+
+	// 2. SetActiveWorld with seed
+	seed := "987654321"
+	seedBody, _ := json.Marshal(SetActiveWorldRequest{
+		WorldName: "world_with_seed",
+		Seed:      &seed,
+	})
+	reqSeed := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader(seedBody))
+	wSeed := httptest.NewRecorder()
+	handler.HandleSetActiveWorld(wSeed, reqSeed)
+	if wSeed.Code != http.StatusOK {
+		t.Errorf("Expected 200 on SetActiveWorld with seed, got %d", wSeed.Code)
+	}
+
+	// 3. DuplicateWorld invalid JSON
+	badDupJSON := httptest.NewRequest(http.MethodPost, "/api/worlds/duplicate", bytes.NewReader([]byte(`bad`)))
+	wBadDupJSON := httptest.NewRecorder()
+	handler.HandleDuplicateWorld(wBadDupJSON, badDupJSON)
+	if wBadDupJSON.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on bad JSON in DuplicateWorld, got %d", wBadDupJSON.Code)
+	}
+
+	// 4. DuplicateWorld empty source or target
+	dupNoSource, _ := json.Marshal(DuplicateWorldRequest{SourceWorld: "", TargetWorld: "target"})
+	reqNoSource := httptest.NewRequest(http.MethodPost, "/api/worlds/duplicate", bytes.NewReader(dupNoSource))
+	wNoSource := httptest.NewRecorder()
+	handler.HandleDuplicateWorld(wNoSource, reqNoSource)
+	if wNoSource.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on empty source in DuplicateWorld, got %d", wNoSource.Code)
+	}
+
+	dupNoTarget, _ := json.Marshal(DuplicateWorldRequest{SourceWorld: "source", TargetWorld: ""})
+	reqNoTarget := httptest.NewRequest(http.MethodPost, "/api/worlds/duplicate", bytes.NewReader(dupNoTarget))
+	wNoTarget := httptest.NewRecorder()
+	handler.HandleDuplicateWorld(wNoTarget, reqNoTarget)
+	if wNoTarget.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on empty target in DuplicateWorld, got %d", wNoTarget.Code)
+	}
+
+	// 5. CreateWorld invalid JSON
+	badCreateJSON := httptest.NewRequest(http.MethodPost, "/api/worlds/create", bytes.NewReader([]byte(`bad`)))
+	wBadCreateJSON := httptest.NewRecorder()
+	handler.HandleCreateWorld(wBadCreateJSON, badCreateJSON)
+	if wBadCreateJSON.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on bad JSON in CreateWorld, got %d", wBadCreateJSON.Code)
+	}
+}
+
+func TestSetActiveWorldRunningServer(t *testing.T) {
+	origExec := minecraft.ExecCommandContext
+	defer func() { minecraft.ExecCommandContext = origExec }()
+
+	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	tempDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tempDir, "server.properties"), []byte("level-name=world\n"), 0644)
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+
+	// Start server
+	if err := mcServer.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+	defer mcServer.Kill()
+
+	// Call HandleSetActiveWorld while running
+	req := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader([]byte(`{"world_name":"switched_running_world"}`)))
+	w := httptest.NewRecorder()
+	handler.HandleSetActiveWorld(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK switching active world on running server, got %d: %s", w.Code, w.Body.String())
+	}
+
+	props, err := config.LoadProperties(tempDir)
+	if err != nil || props["level-name"] != "switched_running_world" {
+		t.Errorf("Expected level-name to be switched_running_world, got: %v, %v", err, props["level-name"])
+	}
 }
 

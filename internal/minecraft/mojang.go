@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+var (
+	MojangBaseURL = "https://api.mojang.com"
+	GeyserBaseURL = "https://api.geysermc.org"
+)
+
 type MojangProfile struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
@@ -18,7 +23,7 @@ type MojangProfile struct {
 func GetUUID(name string) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	url := fmt.Sprintf("https://api.mojang.com/users/profiles/minecraft/%s", name)
+	url := fmt.Sprintf("%s/users/profiles/minecraft/%s", MojangBaseURL, name)
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -52,7 +57,7 @@ func GetXUID(gamerTag string) (string, error) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	url := fmt.Sprintf("https://api.geysermc.org/v2/xbox/xuid/%s", cleanTag)
+	url := fmt.Sprintf("%s/v2/xbox/xuid/%s", GeyserBaseURL, cleanTag)
 
 	resp, err := client.Get(url)
 	if err != nil {

@@ -1,6 +1,8 @@
 package minecraft
 
 import (
+	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -283,6 +285,87 @@ func TestModernizedVitalsAndMultiCore(t *testing.T) {
 	}
 	if finalVitals.TPS != 20.0 {
 		t.Errorf("Expected healthy TPS 20.0, got %f", finalVitals.TPS)
+	}
+}
+
+func TestServerStartStopKillLifecycle(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	// Mock command with "cat"
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	// 1. Start server
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+
+	if server.GetStatus() != StatusRunning {
+		t.Errorf("Expected StatusRunning, got %v", server.GetStatus())
+	}
+
+	// 2. Start when already running returns error
+	if err := server.Start(); err == nil {
+		t.Errorf("Expected error when starting already running server")
+	}
+
+	// 3. Stop running server
+	if err := server.Stop(); err != nil {
+		t.Fatalf("Failed to stop running server: %v", err)
+	}
+
+	// 4. Kill server
+	_ = server.Kill()
+
+	// Wait for process monitor to set StatusStopped
+	for i := 0; i < 20; i++ {
+		if server.GetStatus() == StatusStopped {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if server.GetStatus() != StatusStopped {
+		t.Errorf("Expected server to be stopped, got %v", server.GetStatus())
+	}
+
+	// Kill already stopped server returns error
+	if err := server.Kill(); err == nil {
+		t.Errorf("Expected error killing already stopped server")
+	}
+}
+
+func TestServerMonitorProcessExit(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	// Mock command that immediately exits
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "true")
+	}
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+
+	// Process exits immediately, monitorProcess should transition status to StatusStopped
+	for i := 0; i < 20; i++ {
+		if server.GetStatus() == StatusStopped {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if server.GetStatus() != StatusStopped {
+		t.Errorf("Expected server to transition to StatusStopped, got %v", server.GetStatus())
 	}
 }
 
