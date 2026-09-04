@@ -101,7 +101,12 @@ func (c *Client) readPump() {
 		var msg WSMessage
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err,
+				websocket.CloseGoingAway,
+				websocket.CloseAbnormalClosure,
+				websocket.CloseNormalClosure,
+				websocket.CloseNoStatusReceived,
+			) {
 				log.Printf("[WS] Read error: %v", err)
 			}
 			break
