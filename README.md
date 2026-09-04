@@ -15,6 +15,7 @@
 - **Web User Administration:** Multi-user authentication control panel with bcrypt hashing, password rotation, and role management.
 - **Atomic SQLite Migration Engine:** Versioned schema migrations using native `PRAGMA user_version` with automatic production database adoption.
 - **Server Configuration Editor:** Categorized visual controls (General, Gameplay, Security, Performance, RCON) and raw editor with comment preservation for `server.properties`.
+- **Backup Engine & Snapshots:** Zero-data-loss snapshots coordinated with Minecraft autosave freezing (`save-off` -> `save-all flush` -> archive -> `save-on`), pure-Go ZIP compression with ZipSlip defense, on-the-fly SHA-256 verification, one-click restoration, and archive downloads.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -174,6 +175,13 @@ journalctl -u lodestone -f
 - `PUT /api/users/password`: Reset user password (`{"username": "...", "password": "..."}`).
 - `DELETE /api/users?username=...`: Delete a user (preventing deletion of last remaining user).
 
+### Backup & Snapshot Endpoints
+- `GET /api/backups`: List existing backup archives with size, creation timestamp, world name, and checksum.
+- `POST /api/backups/create`: Create a coordinated snapshot (`{"type": "world"|"full", "world_name": "..."}`).
+- `GET /api/backups/download?file=...`: Stream and download a backup archive zip.
+- `POST /api/backups/restore`: Restore server or world from archive (`{"file": "..."}`).
+- `DELETE /api/backups?file=...`: Delete an archive from storage.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -184,7 +192,7 @@ journalctl -u lodestone -f
 - [x] Web User Administration Control Panel
 - [x] Atomic SQLite Migration Engine (`PRAGMA user_version`)
 - [x] Visual Server Configuration Editor (`server.properties`)
-- [ ] Milestone 2.2: Backup Engine & Snapshots
+- [x] Milestone 2.2: Backup Engine & Snapshots
 - [ ] Milestone 2.5: Cron Task Scheduler
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
 - [ ] Milestone 3.2: Modrinth/Hangar Plugin Manager

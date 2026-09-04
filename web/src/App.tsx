@@ -7,6 +7,7 @@ import Worlds from './pages/Worlds';
 import Updater from './pages/Updater';
 import Users from './pages/Users';
 import ConfigEditor from './pages/ConfigEditor';
+import Backups from './pages/Backups';
 import type { JSX } from 'react';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -33,6 +34,7 @@ function App() {
                     <Route path="updater" element={<Updater />} />
                     <Route path="users" element={<Users />} />
                     <Route path="config" element={<ConfigEditor />} />
+                    <Route path="backups" element={<Backups />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
