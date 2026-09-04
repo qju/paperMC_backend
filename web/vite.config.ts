@@ -20,6 +20,18 @@ export default defineConfig({
             '/ws': {
                 target: 'ws://localhost:8080',
                 ws: true,
+                configure: (proxy) => {
+                    proxy.on('error', (err: any) => {
+                        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
+                        console.error('[vite ws proxy error]', err);
+                    });
+                    proxy.on('proxyReqWs', (_proxyReq, _req, socket: any) => {
+                        socket.on('error', (err: any) => {
+                            if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
+                            console.error('[vite ws socket error]', err);
+                        });
+                    });
+                }
             },
             '/api': {
                 target: 'http://localhost:8080',
