@@ -429,7 +429,7 @@ export default function ConfigEditor() {
     }, [properties, otherProperties]);
 
     return (
-        <div className="space-y-6 relative min-h-full pb-16 flex flex-col">
+        <div className="space-y-6 relative w-full pb-16">
             {/* TOAST NOTIFICATIONS */}
             <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
                 {toasts.map(toast => (
@@ -518,10 +518,10 @@ export default function ConfigEditor() {
             )}
 
             {/* TABS SELECTOR */}
-            <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+            <div className="flex items-center gap-2 border-b border-white/10 pb-3 pt-1 overflow-x-auto custom-scrollbar shrink-0">
                 <button
                     onClick={() => setActiveTab('visual')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
                         activeTab === 'visual'
                             ? 'bg-mc-diamond/20 text-mc-diamond border border-mc-diamond/30 shadow-[0_0_12px_rgba(85,255,255,0.15)]'
                             : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
@@ -531,7 +531,7 @@ export default function ConfigEditor() {
                 </button>
                 <button
                     onClick={() => setActiveTab('all')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
                         activeTab === 'all'
                             ? 'bg-mc-diamond/20 text-mc-diamond border border-mc-diamond/30 shadow-[0_0_12px_rgba(85,255,255,0.15)]'
                             : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
@@ -541,7 +541,7 @@ export default function ConfigEditor() {
                 </button>
                 <button
                     onClick={() => setActiveTab('raw')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
                         activeTab === 'raw'
                             ? 'bg-mc-diamond/20 text-mc-diamond border border-mc-diamond/30 shadow-[0_0_12px_rgba(85,255,255,0.15)]'
                             : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
@@ -551,7 +551,7 @@ export default function ConfigEditor() {
                 </button>
                 <button
                     onClick={() => setActiveTab('flags')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm font-bold transition-all shrink-0 ${
                         activeTab === 'flags'
                             ? 'bg-mc-diamond/20 text-mc-diamond border border-mc-diamond/30 shadow-[0_0_12px_rgba(85,255,255,0.15)]'
                             : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
@@ -1059,7 +1059,7 @@ function CategoryButton({ active, onClick, icon, label, count }: { active: boole
     return (
         <button
             onClick={onClick}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-xs uppercase tracking-wider font-bold transition-all border ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-xs uppercase tracking-wider font-bold transition-all border shrink-0 ${
                 active
                     ? 'bg-mc-gold/20 text-mc-gold border-mc-gold/40 shadow-[0_0_10px_rgba(255,170,0,0.2)]'
                     : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border-white/5'
