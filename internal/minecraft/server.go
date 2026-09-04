@@ -99,6 +99,8 @@ type Server struct {
 	lastTPSUpdate       time.Time
 	internalPollPending int32
 	pollInterval        time.Duration
+	isReady             atomic.Bool
+	readyTime           time.Time
 
 	// Active launch arguments
 	activeArgs []string
@@ -131,6 +133,7 @@ var tpsLogRegex = regexp.MustCompile(`(?i)TPS from last 1m,\s*5m,\s*15m:\s*\*?([
 var msptLogRegex = regexp.MustCompile(`(?i)(?:⏵|\>)?\s*5s:\s*([0-9.]+)\s*/\s*([0-9.]+)\s*/\s*([0-9.]+)\s*ms`)
 var cantKeepUpRegex = regexp.MustCompile(`(?i)Can't keep up!.*Running\s+([0-9]+)ms\s+or\s+([0-9]+)\s+ticks behind`)
 var tickQueryRegex = regexp.MustCompile(`(?i)Current tick rate:\s*([0-9.]+)(?:/s)?.*?Average tick time:\s*([0-9.]+)ms`)
+var doneLogRegex = regexp.MustCompile(`(?i)\bDone\s*\([0-9.]+\w*s?\)!`)
 
 func CleanString(input string) string {
 	withoutAnsi := ansiRegex.ReplaceAllString(input, "")
@@ -206,6 +209,8 @@ func (s *Server) Start() error {
 	s.currentTPS = 20.0
 	s.currentMSPT = 20.0
 	atomic.StoreInt32(&s.internalPollPending, 0)
+	s.isReady.Store(false)
+	s.readyTime = time.Time{}
 	s.mu.Unlock()
 
 	go s.monitorProcess()
@@ -268,9 +273,12 @@ func (s *Server) monitorProcess() {
 	s.currentMSPT = 0
 	atomic.StoreInt32(&s.internalPollPending, 0)
 	s.activeArgs = nil
+	s.readyTime = time.Time{}
 	cancel := s.cancel
 	s.cancel = nil
 	s.mu.Unlock()
+
+	s.isReady.Store(false)
 
 	if cancel != nil {
 		cancel()
@@ -286,8 +294,13 @@ func (s *Server) GetVitals() Vitals {
 		onlineList = append(onlineList, p)
 	}
 
+	status := s.status
+	if status == StatusRunning && !s.isReady.Load() {
+		status = StatusStarting
+	}
+
 	vitals := Vitals{
-		Status:      s.status,
+		Status:      status,
 		TotalMemory: s.RAM,
 		PlayerCount: len(onlineList),
 		PlayerList:  onlineList,
@@ -379,6 +392,11 @@ func (s *Server) StreamLogs() {
 			s.Broadcast("[MC] " + text)
 		}
 
+		// Detect server boot completion ("Done (X.XXs)! For help, type help")
+		if !s.isReady.Load() && doneLogRegex.MatchString(cleanText) {
+			s.markReady()
+		}
+
 		// Capture UUID
 		if strings.Contains(cleanText, "UUID of player") {
 			matches := uuidLogRegex.FindStringSubmatch(cleanText)
@@ -412,6 +430,39 @@ func (s *Server) StreamLogs() {
 	}
 }
 
+func (s *Server) markReady() {
+	if s.isReady.Swap(true) {
+		return
+	}
+	s.mu.Lock()
+	s.readyTime = time.Now()
+	s.mu.Unlock()
+
+	// Wait 5-second stabilization grace period after boot completion before polling TPS
+	go func() {
+		time.Sleep(5 * time.Second)
+		s.queryTPS()
+	}()
+}
+
+// SetReady sets the server readiness flag. In tests, setting ready to true backdates
+// readyTime so that queries are not blocked by the post-boot grace period.
+func (s *Server) SetReady(ready bool) {
+	s.isReady.Store(ready)
+	s.mu.Lock()
+	if ready {
+		s.readyTime = time.Now().Add(-10 * time.Second)
+	} else {
+		s.readyTime = time.Time{}
+	}
+	s.mu.Unlock()
+}
+
+// IsReady returns whether the server has finished its boot cycle.
+func (s *Server) IsReady() bool {
+	return s.isReady.Load()
+}
+
 func (s *Server) consumeInternalPoll() bool {
 	for {
 		pending := atomic.LoadInt32(&s.internalPollPending)
@@ -427,9 +478,26 @@ func (s *Server) consumeInternalPoll() bool {
 func (s *Server) queryTPS() {
 	s.mu.Lock()
 	running := (s.status == StatusRunning && s.stdin != nil)
+	readyAt := s.readyTime
+	startAt := s.startTime
 	s.mu.Unlock()
 
 	if !running {
+		return
+	}
+
+	// Guard: Do not query TPS before server is ready
+	if !s.isReady.Load() {
+		// Fallback for non-standard servers that never emit "Done" log
+		if !startAt.IsZero() && time.Since(startAt) > 60*time.Second {
+			s.isReady.Store(true)
+		} else {
+			return
+		}
+	}
+
+	// Guard: Allow 5-second stabilization grace period after boot completion
+	if !readyAt.IsZero() && time.Since(readyAt) < 5*time.Second {
 		return
 	}
 
@@ -446,18 +514,6 @@ func (s *Server) pollVitals(ctx context.Context) {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	initialDelay := 2 * time.Second
-	if interval < initialDelay {
-		initialDelay = interval
-	}
-
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(initialDelay):
-		s.queryTPS()
-	}
 
 	for {
 		select {
