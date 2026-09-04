@@ -146,6 +146,16 @@ func main() {
 		"DELETE /api/schedules":     mcHandler.HandleDeleteSchedule,
 		"GET /api/schedules/logs":   mcHandler.HandleGetScheduleLogs,
 		"DELETE /api/schedules/logs": mcHandler.HandleClearScheduleLogs,
+
+		// Plugins & Bedrock Bridge
+		"GET /api/plugins":                 mcHandler.HandleGetPlugins,
+		"POST /api/plugins/toggle":         mcHandler.HandleTogglePlugin,
+		"DELETE /api/plugins":              mcHandler.HandleDeletePlugin,
+		"POST /api/plugins/upload":         mcHandler.HandleUploadPlugin,
+		"GET /api/plugins/geyser/status":   mcHandler.HandleGetGeyserStatus,
+		"POST /api/plugins/geyser/update":  mcHandler.HandleUpdateGeyser,
+		"GET /api/plugins/market/search":   mcHandler.HandleSearchMarketPlugins,
+		"POST /api/plugins/market/install": mcHandler.HandleInstallMarketPlugin,
 	}
 
 	// Register all the protected routes

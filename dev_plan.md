@@ -96,11 +96,13 @@
 - [ ] **Task:** **Timings Viewer:** Parse `timings report` output.
 - [ ] **Task:** **Smart Flags:** Implement a preset manager for Aikaras flags based on detected system RAM.
 
-### Milestone 3.2: Plugin Management
-- [ ] **Task:** Integrate **Modrinth/Hangar API** client.
-- [ ] **Task:** Implement `GET /api/plugins/search?q=...`.
-- [ ] **Task:** Implement `POST /api/plugins/install`.
-- [ ] **Task:** Auto-update logic for installed plugins.
+### Milestone 3.2: Plugin Management & Bedrock Bridge (Geyser & Floodgate)
+- [x] **Task:** Implement `internal/plugins` scanner and pure-Go ZIP YAML parser for `plugin.yml` and `paper-plugin.yml`.
+- [x] **Task:** Implement plugin operations: enable/disable toggle (`.jar` <-> `.jar.disabled`), safe deletion, and `.jar` multipart upload.
+- [x] **Task:** Build dedicated **GeyserMC & Floodgate Bedrock Bridge** client (`internal/plugins/geyser.go`) tracking installed vs upstream builds, SHA-256 verification, and Bedrock client compatibility ranges.
+- [x] **Task:** Integrate **Modrinth v2 API** client (`internal/plugins/modrinth.go`) for search and one-click installation with SHA-512/SHA-1 verification.
+- [x] **Task:** Implement REST endpoints (`GET /api/plugins`, `POST /api/plugins/toggle`, `DELETE /api/plugins`, `POST /api/plugins/upload`, `GET /api/plugins/geyser/status`, `POST /api/plugins/geyser/update`, `GET /api/plugins/market/search`, `POST /api/plugins/market/install`).
+- [x] **Task:** Build comprehensive unit tests maintaining $\ge 80\%$ test coverage.
 
 ### Milestone 3.3: Observability
 - [ ] **Task:** **Audit Logs:** Log every API action to DB (Who did what, when).
@@ -125,3 +127,5 @@
 - [x] **Task:** **Web Users:** Operator account table, user creation modal, password reset modal, and safety guards.
 - [x] **Task:** **Backups Page:** Backup listing, snapshot button, download links, and restore modal.
 - [x] **Task:** **Config Editor:** Visual editor for `server.properties` with categorized settings (General, Gameplay, Security, Performance, RCON), search filter, and raw editor toggle with comment preservation.
+- [x] **Task:** **Schedules & Logs Page:** Active schedules manager with visual presets, status toggle, Run Now trigger, and searchable execution audit log table.
+- [x] **Task:** **Plugins & Bedrock Bridge Dashboard:** Installed plugins inspector with enable/disable toggle, file upload, Modrinth marketplace browser, and dedicated Geyser/Floodgate Bedrock compatibility hub with 1-click update.

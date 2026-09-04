@@ -9,6 +9,7 @@ import (
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
+	"paperMC_backend/internal/plugins"
 	"paperMC_backend/internal/scheduler"
 	"paperMC_backend/internal/updater"
 	"path/filepath"
@@ -18,11 +19,13 @@ import (
 )
 
 type Handler struct {
-	mc        *minecraft.Server
-	updateMu  sync.Mutex
-	store     database.Store
-	hub       *Hub
-	scheduler *scheduler.Service
+	mc             *minecraft.Server
+	updateMu       sync.Mutex
+	store          database.Store
+	hub            *Hub
+	scheduler      *scheduler.Service
+	geyserClient   *plugins.GeyserClient
+	modrinthClient *plugins.ModrinthClient
 }
 
 type StatusResponse struct {
@@ -58,11 +61,13 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 	}
 
 	h := &Handler{
-		mc:        mcServer,
-		updateMu:  sync.Mutex{},
-		store:     store,
-		hub:       hub,
-		scheduler: sched,
+		mc:             mcServer,
+		updateMu:       sync.Mutex{},
+		store:          store,
+		hub:            hub,
+		scheduler:      sched,
+		geyserClient:   plugins.NewGeyserClient(),
+		modrinthClient: plugins.NewModrinthClient(),
 	}
 
 	if mcServer != nil {
@@ -112,6 +117,14 @@ func (h *Handler) SetScheduler(s *scheduler.Service) {
 
 func (h *Handler) GetScheduler() *scheduler.Service {
 	return h.scheduler
+}
+
+func (h *Handler) SetGeyserClient(c *plugins.GeyserClient) {
+	h.geyserClient = c
+}
+
+func (h *Handler) SetModrinthClient(m *plugins.ModrinthClient) {
+	h.modrinthClient = m
 }
 
 func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
