@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,18 @@ func TestCleanString(t *testing.T) {
 	cleaned := CleanString(ansiInput)
 	if cleaned != "Hello World" {
 		t.Errorf("CleanString failed to strip ANSI codes. Got '%s'", cleaned)
+	}
+
+	mcInput := "§6TPS from last 1m: §a*20.0§r   "
+	mcCleaned := CleanString(mcInput)
+	if mcCleaned != "TPS from last 1m: *20.0" {
+		t.Errorf("CleanString failed to strip Minecraft color codes. Got '%s'", mcCleaned)
+	}
+
+	mixed := "\x1b[33m§6[§eServer§6] §aReady!\x1b[0m"
+	mixedCleaned := CleanString(mixed)
+	if mixedCleaned != "[Server] Ready!" {
+		t.Errorf("CleanString failed to strip mixed ANSI & Minecraft codes. Got '%s'", mixedCleaned)
 	}
 }
 
@@ -466,6 +479,245 @@ func TestAddListenerUnsubscribe(t *testing.T) {
 		t.Errorf("Expected count to remain 1 after unsubscribe, got %d", count)
 	}
 	mu.Unlock()
+}
+
+func TestParseVitalsFromLog(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+	server.status = StatusRunning
+
+	// 1. Paper / Spigot TPS log format
+	tpsLine := "TPS from last 1m, 5m, 15m: 19.85, 19.92, 20.0"
+	server.parseVitalsFromLog(tpsLine)
+
+	vitals := server.GetVitals()
+	if vitals.TPS != 19.85 {
+		t.Errorf("Expected TPS 19.85, got %f", vitals.TPS)
+	}
+	expectedMSPT := 1000.0 / 19.85
+	if vitals.MSPT < 50.0 || vitals.MSPT != (float64(int(expectedMSPT*100))/100) {
+		t.Logf("Computed MSPT for TPS 19.85: %f", vitals.MSPT)
+	}
+
+	// 2. Paper TPS format with asterisk (*20.0) and Minecraft color codes
+	cleanTpsLine := CleanString("§6TPS from last 1m, 5m, 15m: §a*20.0§r, §a*20.0§r, §a*20.0")
+	server.parseVitalsFromLog(cleanTpsLine)
+
+	vitals = server.GetVitals()
+	if vitals.TPS != 20.0 {
+		t.Errorf("Expected TPS 20.0, got %f", vitals.TPS)
+	}
+	if vitals.MSPT != 20.0 {
+		t.Errorf("Expected healthy baseline MSPT 20.0, got %f", vitals.MSPT)
+	}
+
+	// 3. Paper MSPT output format (healthy)
+	msptLine := "⏵ 5s: 14.5/11.2/35.8ms"
+	server.parseVitalsFromLog(msptLine)
+
+	vitals = server.GetVitals()
+	if vitals.MSPT != 14.5 {
+		t.Errorf("Expected MSPT 14.5, got %f", vitals.MSPT)
+	}
+	if vitals.TPS != 20.0 {
+		t.Errorf("Expected TPS 20.0, got %f", vitals.TPS)
+	}
+
+	// 4. Paper MSPT output format (lagging MSPT > 50ms)
+	lagMsptLine := "> 5s: 80.0/50.0/120.0ms"
+	server.parseVitalsFromLog(lagMsptLine)
+
+	vitals = server.GetVitals()
+	if vitals.MSPT != 80.0 {
+		t.Errorf("Expected MSPT 80.0, got %f", vitals.MSPT)
+	}
+	expectedLagTPS := 1000.0 / 80.0 // 12.5
+	if vitals.TPS != expectedLagTPS {
+		t.Errorf("Expected TPS %f, got %f", expectedLagTPS, vitals.TPS)
+	}
+
+	// 5. Minecraft "Can't keep up!" engine lag warning
+	cantKeepUpLine := "Can't keep up! Is the server overloaded? Running 2000ms or 40 ticks behind"
+	server.parseVitalsFromLog(cantKeepUpLine)
+
+	vitals = server.GetVitals()
+	// mspt = 50 + (2000 / 40) = 100.0 ms
+	// tps = 1000 / 100 = 10.0
+	if vitals.MSPT != 100.0 {
+		t.Errorf("Expected MSPT 100.0, got %f", vitals.MSPT)
+	}
+	if vitals.TPS != 10.0 {
+		t.Errorf("Expected TPS 10.0, got %f", vitals.TPS)
+	}
+
+	// 6. Vanilla 1.20.3+ /tick query format
+	tickQueryLine := "Current tick rate: 18.0/s. Average tick time: 28.4ms (target: 50.0ms)"
+	server.parseVitalsFromLog(tickQueryLine)
+
+	vitals = server.GetVitals()
+	if vitals.TPS != 18.0 {
+		t.Errorf("Expected TPS 18.0, got %f", vitals.TPS)
+	}
+	if vitals.MSPT != 28.4 {
+		t.Errorf("Expected MSPT 28.4, got %f", vitals.MSPT)
+	}
+
+	// 7. Non-matching line does not modify vitals and returns false
+	suppressed := server.parseVitalsFromLog("Some unformatted chat message")
+	if suppressed {
+		t.Errorf("Expected non-matching line to return false, got true")
+	}
+}
+
+func TestInternalPollSuppressionAndStreamLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+	server.status = StatusRunning
+
+	var received []string
+	var mu sync.Mutex
+	server.AddListener(func(msg string) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, msg)
+	})
+
+	// 1. Simulate an automated background query
+	atomic.StoreInt32(&server.internalPollPending, 1)
+
+	// Stream contains a background TPS query response followed by a normal log line
+	logData := `TPS from last 1m, 5m, 15m: 19.5, 19.8, 20.0
+[12:00:00 INFO]: Normal server broadcast
+`
+	server.stdout = &stringReadCloser{Reader: strings.NewReader(logData)}
+	server.StreamLogs()
+
+	mu.Lock()
+	recCopy := make([]string, len(received))
+	copy(recCopy, received)
+	mu.Unlock()
+
+	// The background TPS response must NOT be broadcast
+	for _, msg := range recCopy {
+		if strings.Contains(msg, "TPS from last") {
+			t.Errorf("Automated TPS response was broadcast to listeners: %s", msg)
+		}
+	}
+
+	// The normal log line MUST be broadcast
+	foundNormal := false
+	for _, msg := range recCopy {
+		if strings.Contains(msg, "Normal server broadcast") {
+			foundNormal = true
+			break
+		}
+	}
+	if !foundNormal {
+		t.Errorf("Expected normal log line to be broadcast, but was not found in: %+v", recCopy)
+	}
+
+	// 2. Test manual user command (internalPollPending == 0) is broadcast
+	received = nil
+	userLogData := `TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0
+`
+	server.stdout = &stringReadCloser{Reader: strings.NewReader(userLogData)}
+	server.StreamLogs()
+
+	mu.Lock()
+	userRecCopy := make([]string, len(received))
+	copy(userRecCopy, received)
+	mu.Unlock()
+
+	foundUserTPS := false
+	for _, msg := range userRecCopy {
+		if strings.Contains(msg, "TPS from last") {
+			foundUserTPS = true
+			break
+		}
+	}
+	if !foundUserTPS {
+		t.Errorf("Manual user TPS command was wrongly suppressed from broadcast: %+v", userRecCopy)
+	}
+}
+
+func TestQueryTPSAndPollVitalsLifecycle(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+
+	// 1. Stopped server does not query TPS
+	server.queryTPS()
+	if atomic.LoadInt32(&server.internalPollPending) != 0 {
+		t.Errorf("Expected 0 pending polls when server is stopped")
+	}
+
+	// 2. Running server queries TPS
+	mockIn := &mockBufferCloser{}
+	server.stdin = mockIn
+	server.status = StatusRunning
+
+	server.queryTPS()
+	if atomic.LoadInt32(&server.internalPollPending) != 1 {
+		t.Errorf("Expected 1 pending poll, got %d", atomic.LoadInt32(&server.internalPollPending))
+	}
+	if !strings.Contains(mockIn.String(), "tps\n") {
+		t.Errorf("Expected 'tps\\n' sent to stdin, got: %s", mockIn.String())
+	}
+
+	// 3. pollVitals lifecycle with fast context cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	server.pollInterval = 10 * time.Millisecond
+
+	done := make(chan struct{})
+	go func() {
+		server.pollVitals(ctx)
+		close(done)
+	}()
+
+	// Wait briefly then cancel
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// Success, terminated cleanly
+	case <-time.After(1 * time.Second):
+		t.Fatalf("pollVitals failed to terminate on ctx cancellation")
+	}
+}
+
+func TestGetVitalsStoppedVsRunningTPS(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "4G", nil)
+
+	// Stopped server vitals must report 0.0 TPS and 0.0 MSPT
+	stoppedVitals := server.GetVitals()
+	if stoppedVitals.TPS != 0.0 || stoppedVitals.MSPT != 0.0 {
+		t.Errorf("Expected stopped server to report 0.0 TPS and 0.0 MSPT, got TPS=%f, MSPT=%f",
+			stoppedVitals.TPS, stoppedVitals.MSPT)
+	}
+
+	// Running server with parsed vitals
+	server.status = StatusRunning
+	server.currentTPS = 17.5
+	server.currentMSPT = 32.0
+
+	runningVitals := server.GetVitals()
+	if runningVitals.TPS != 17.5 {
+		t.Errorf("Expected running server TPS 17.5, got %f", runningVitals.TPS)
+	}
+	if runningVitals.MSPT != 32.0 {
+		t.Errorf("Expected running server MSPT 32.0, got %f", runningVitals.MSPT)
+	}
+
+	// Check history entry has recorded the dynamic values
+	if len(runningVitals.History) == 0 {
+		t.Fatalf("Expected history entries, got 0")
+	}
+	lastPoint := runningVitals.History[len(runningVitals.History)-1]
+	if lastPoint.TPS != 17.5 || lastPoint.MSPT != 32.0 {
+		t.Errorf("Expected history point TPS 17.5 and MSPT 32.0, got TPS=%f, MSPT=%f",
+			lastPoint.TPS, lastPoint.MSPT)
+	}
 }
 
 

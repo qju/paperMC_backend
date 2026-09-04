@@ -50,8 +50,8 @@ export default function VitalsPanel({ vitals }: VitalsPanelProps) {
     const sysCpuPercent = vitals ? Math.min(vitals.system_cpu, 100) : 0;
 
     // TPS calculation & health color
-    const tps = isOnline ? (vitals?.tps || 20.0) : 0;
-    const mspt = isOnline ? (vitals?.mspt || 18.5) : 0;
+    const tps = isOnline ? (vitals?.tps !== undefined ? vitals.tps : 20.0) : 0;
+    const mspt = isOnline ? (vitals?.mspt !== undefined ? vitals.mspt : 20.0) : 0;
 
     const tpsColor = useMemo(() => {
         if (!isOnline) return 'text-white/40';
@@ -136,7 +136,7 @@ export default function VitalsPanel({ vitals }: VitalsPanelProps) {
                 {isOnline && vitals?.history && vitals.history.length > 1 && (
                     <div className="pt-1">
                         <MiniSparkline
-                            data={vitals.history.map(p => p.tps || 20)}
+                            data={vitals.history.map(p => p.tps !== undefined ? p.tps : 20)}
                             min={0}
                             max={20}
                             color="#55ff55"
