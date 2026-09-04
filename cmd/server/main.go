@@ -59,6 +59,9 @@ func main() {
 	}
 
 	mcHandler := api.NewServerHandler(mcServer, store)
+	if err := mcHandler.StartScheduler(); err != nil {
+		log.Printf("[Scheduler] Warning starting scheduler: %v", err)
+	}
 	mux := http.NewServeMux()
 
 	// Prepare the forwarded Files
@@ -133,6 +136,16 @@ func main() {
 		"GET /api/backups/download": mcHandler.HandleDownloadBackup,
 		"POST /api/backups/restore": mcHandler.HandleRestoreBackup,
 		"DELETE /api/backups":       mcHandler.HandleDeleteBackup,
+
+		// Schedules & Execution Logs
+		"GET /api/schedules":        mcHandler.HandleListSchedules,
+		"POST /api/schedules":       mcHandler.HandleCreateSchedule,
+		"PUT /api/schedules":        mcHandler.HandleUpdateSchedule,
+		"POST /api/schedules/toggle": mcHandler.HandleToggleSchedule,
+		"POST /api/schedules/run":   mcHandler.HandleRunSchedule,
+		"DELETE /api/schedules":     mcHandler.HandleDeleteSchedule,
+		"GET /api/schedules/logs":   mcHandler.HandleGetScheduleLogs,
+		"DELETE /api/schedules/logs": mcHandler.HandleClearScheduleLogs,
 	}
 
 	// Register all the protected routes
@@ -165,6 +178,7 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	sig := <-c
 	fmt.Printf("Receiving Signal [%v]. Shutting down...\n", sig)
+	mcHandler.StopScheduler()
 	if err := mcServer.Stop(); err != nil {
 		log.Printf("Error stopping the server: %v", err)
 	}

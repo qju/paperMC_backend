@@ -16,6 +16,7 @@
 - **Atomic SQLite Migration Engine:** Versioned schema migrations using native `PRAGMA user_version` with automatic production database adoption.
 - **Server Configuration Editor:** Categorized visual controls (General, Gameplay, Security, Performance, RCON) and raw editor with comment preservation for `server.properties`.
 - **Backup Engine & Snapshots:** Zero-data-loss snapshots coordinated with Minecraft autosave freezing (`save-off` -> `save-all flush` -> archive -> `save-on`), pure-Go ZIP compression with ZipSlip defense, on-the-fly SHA-256 verification, one-click restoration, and archive downloads.
+- **Automated Task Scheduler & Execution Audit Logs:** Background cron engine (`robfig/cron/v3`) for automated world backups, scheduled server restarts with countdown notifications, maintenance commands, and chat broadcasts, backed by a persistent execution audit log tracking run statuses, durations in milliseconds, and error details.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -182,6 +183,16 @@ journalctl -u lodestone -f
 - `POST /api/backups/restore`: Restore server or world from archive (`{"file": "..."}`).
 - `DELETE /api/backups?file=...`: Delete an archive from storage.
 
+### Automation & Scheduler Endpoints
+- `GET /api/schedules`: List all automated schedules with next run timestamps.
+- `POST /api/schedules`: Create a scheduled job (`{"name": "...", "cron_expr": "...", "action_type": "...", "payload": "..."}`).
+- `PUT /api/schedules`: Update schedule parameters, cron expression, or action payload.
+- `POST /api/schedules/toggle?id=...`: Toggle schedule state (enable/pause).
+- `POST /api/schedules/run?id=...`: Trigger manual immediate background execution ("Run Now").
+- `DELETE /api/schedules?id=...`: Delete a schedule and cascade delete its execution logs.
+- `GET /api/schedules/logs?schedule_id=...&limit=...`: Retrieve historical execution audit logs with run durations and error traces.
+- `DELETE /api/schedules/logs?schedule_id=...`: Purge historical execution audit logs.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -193,7 +204,7 @@ journalctl -u lodestone -f
 - [x] Atomic SQLite Migration Engine (`PRAGMA user_version`)
 - [x] Visual Server Configuration Editor (`server.properties`)
 - [x] Milestone 2.2: Backup Engine & Snapshots
-- [ ] Milestone 2.5: Cron Task Scheduler
+- [x] Milestone 2.5: Cron Task Scheduler & Execution Log Viewer
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
 - [ ] Milestone 3.2: Modrinth/Hangar Plugin Manager
 

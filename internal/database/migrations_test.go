@@ -30,13 +30,21 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Fatalf("RunMigrations failed: %v", err)
 	}
 
-	// Schema version must now be at least 1
+	// Schema version must now be 2
 	verAfter, err := GetSchemaVersion(db)
 	if err != nil {
 		t.Fatalf("GetSchemaVersion failed: %v", err)
 	}
-	if verAfter != 1 {
-		t.Errorf("Expected schema version 1 after migrations, got %d", verAfter)
+	if verAfter != 2 {
+		t.Errorf("Expected schema version 2 after migrations, got %d", verAfter)
+	}
+
+	// Verify schedules and schedule_logs tables exist
+	var schedCount, logCount int
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules';").Scan(&schedCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedule_logs';").Scan(&logCount)
+	if schedCount != 1 || logCount != 1 {
+		t.Errorf("Expected schedules and schedule_logs tables to exist: schedCount=%d, logCount=%d", schedCount, logCount)
 	}
 
 	// Re-running migrations must be idempotent
@@ -74,13 +82,13 @@ func TestMigrationsLegacyUnversionedDatabase(t *testing.T) {
 		t.Fatalf("Expected version 0 for un-stamped db, got %d", ver)
 	}
 
-	// Run migration engine: should detect existing tables and stamp version 1
+	// Run migration engine: should detect existing tables, stamp version 1, then apply migration 2
 	if err := RunMigrations(db); err != nil {
 		t.Fatalf("RunMigrations failed on legacy db: %v", err)
 	}
 
 	verAfter, err := GetSchemaVersion(db)
-	if err != nil || verAfter != 1 {
-		t.Errorf("Expected schema version 1 after legacy upgrade, got %d", verAfter)
+	if err != nil || verAfter != 2 {
+		t.Errorf("Expected schema version 2 after legacy upgrade, got %d", verAfter)
 	}
 }

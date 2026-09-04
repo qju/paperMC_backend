@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Terminal, Users as UsersIcon, Settings, LogOut, HardDrive, Menu, Globe, DownloadCloud, Shield } from 'lucide-react';
+import { Terminal, Users as UsersIcon, Settings, LogOut, HardDrive, Menu, Globe, DownloadCloud, Shield, Clock } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import VitalsPanel from '../components/VitalsPanel';
@@ -87,6 +87,7 @@ export default function DashboardLayout() {
                     <NavItem to="/users" icon={<Shield size={20} />} label="Web Users" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/config" icon={<Settings size={20} />} label="Server Config" onClick={() => setMobileMenuOpen(false)} />
                     <NavItem to="/backups" icon={<HardDrive size={20} />} label="Backups" onClick={() => setMobileMenuOpen(false)} />
+                    <NavItem to="/schedules" icon={<Clock size={20} />} label="Schedules & Logs" onClick={() => setMobileMenuOpen(false)} />
                 </nav>
 
                 <div className="p-4 border-t border-white/10">

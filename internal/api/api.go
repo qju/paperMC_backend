@@ -9,6 +9,7 @@ import (
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
+	"paperMC_backend/internal/scheduler"
 	"paperMC_backend/internal/updater"
 	"path/filepath"
 	"strings"
@@ -17,10 +18,11 @@ import (
 )
 
 type Handler struct {
-	mc       *minecraft.Server
-	updateMu sync.Mutex
-	store    database.Store
-	hub      *Hub
+	mc        *minecraft.Server
+	updateMu  sync.Mutex
+	store     database.Store
+	hub       *Hub
+	scheduler *scheduler.Service
 }
 
 type StatusResponse struct {
@@ -50,37 +52,66 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 	hub := NewHub()
 	go hub.Run()
 
-	h := &Handler{
-		mc:       mcServer,
-		updateMu: sync.Mutex{},
-		store:    store,
-		hub:      hub,
+	var sched *scheduler.Service
+	if store != nil && mcServer != nil {
+		sched = scheduler.NewService(store, mcServer, mcServer.WorkDir)
 	}
 
-	mcServer.AddListener(func(msg string) {
-		h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
-	})
+	h := &Handler{
+		mc:        mcServer,
+		updateMu:  sync.Mutex{},
+		store:     store,
+		hub:       hub,
+		scheduler: sched,
+	}
 
-	// Broadcast live vitals over WebSockets every 1.5 seconds
-	go func() {
-		ticker := time.NewTicker(1500 * time.Millisecond)
-		defer ticker.Stop()
-		for range ticker.C {
-			vitals := mcServer.GetVitals()
-			props, err := config.LoadProperties(mcServer.WorkDir)
-			if err == nil && props["level-name"] != "" {
-				vitals.ActiveWorld = props["level-name"]
-			} else {
-				vitals.ActiveWorld = "world"
+	if mcServer != nil {
+		mcServer.AddListener(func(msg string) {
+			h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
+		})
+
+		// Broadcast live vitals over WebSockets every 1.5 seconds
+		go func() {
+			ticker := time.NewTicker(1500 * time.Millisecond)
+			defer ticker.Stop()
+			for range ticker.C {
+				vitals := mcServer.GetVitals()
+				props, err := config.LoadProperties(mcServer.WorkDir)
+				if err == nil && props["level-name"] != "" {
+					vitals.ActiveWorld = props["level-name"]
+				} else {
+					vitals.ActiveWorld = "world"
+				}
+				h.hub.Broadcast(WSMessage{
+					Type: "vitals",
+					Data: vitals,
+				})
 			}
-			h.hub.Broadcast(WSMessage{
-				Type: "vitals",
-				Data: vitals,
-			})
-		}
-	}()
+		}()
+	}
 
 	return h
+}
+
+func (h *Handler) StartScheduler() error {
+	if h.scheduler != nil {
+		return h.scheduler.Start()
+	}
+	return nil
+}
+
+func (h *Handler) StopScheduler() {
+	if h.scheduler != nil {
+		h.scheduler.Stop()
+	}
+}
+
+func (h *Handler) SetScheduler(s *scheduler.Service) {
+	h.scheduler = s
+}
+
+func (h *Handler) GetScheduler() *scheduler.Service {
+	return h.scheduler
 }
 
 func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {

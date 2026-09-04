@@ -62,10 +62,13 @@
 - [x] **Task:** Streaming download with on-the-fly SHA-256 checksum verification.
 - [x] **Task:** Endpoints `GET /api/updater/versions`, `GET /api/updater/check`, `POST /api/updater/apply`.
 
-### Milestone 2.5: The Scheduler (Cron)
-- [ ] **Task:** Implement `robfig/cron`.
-- [ ] **Task:** Create DB table `schedules` via database migration (Version 2).
-- [ ] **Task:** Build logic to trigger internal functions (Restart, Backup, Broadcast) from Cron.
+### Milestone 2.5: The Scheduler (Cron) & Task Execution Log Viewer
+- [x] **Task:** Implement `robfig/cron/v3` scheduler engine (`internal/scheduler`).
+- [x] **Task:** Create DB tables `schedules` and `schedule_logs` via atomic Version 2 migration (`internal/database/migrations.go`).
+- [x] **Task:** Implement scheduling runners for automated actions (`backup`, `restart`, `command`, `broadcast`, `start`, `stop`) with overlap concurrency locking and execution audit logging.
+- [x] **Task:** Implement REST endpoints (`GET/POST/PUT/DELETE /api/schedules`, `POST /api/schedules/toggle`, `POST /api/schedules/run`, `GET/DELETE /api/schedules/logs`).
+- [x] **Task:** Build React UI dashboard with visual presets, schedule management, instant "Run Now", and searchable Historical Task Execution Log Viewer.
+- [x] **Task:** Add comprehensive unit & integration tests maintaining $\ge 80\%$ test coverage across all internal packages.
 
 ### Milestone 2.6: Comprehensive Test Coverage & Reliability Gate (Pre-v1.0 Gate)
 - [x] **Task:** Elevate `internal/api` statement test coverage from 46.8% to ≥80%:

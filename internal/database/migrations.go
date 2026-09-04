@@ -41,6 +41,43 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     2,
+		Description: "Add schedules and schedule_logs tables for automated tasks",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS schedules (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				cron_expr TEXT NOT NULL,
+				action_type TEXT NOT NULL,
+				payload TEXT DEFAULT '',
+				is_enabled INTEGER DEFAULT 1,
+				last_run_at DATETIME,
+				last_run_status TEXT DEFAULT '',
+				last_run_error TEXT DEFAULT '',
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE TABLE IF NOT EXISTS schedule_logs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				schedule_id INTEGER NOT NULL,
+				schedule_name TEXT NOT NULL,
+				action_type TEXT NOT NULL,
+				status TEXT NOT NULL,
+				duration_ms INTEGER DEFAULT 0,
+				error_message TEXT DEFAULT '',
+				executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_schedule_logs_schedule_id ON schedule_logs(schedule_id);
+			CREATE INDEX IF NOT EXISTS idx_schedule_logs_executed_at ON schedule_logs(executed_at);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.
