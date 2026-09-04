@@ -156,6 +156,11 @@ func main() {
 		"POST /api/plugins/geyser/update":  mcHandler.HandleUpdateGeyser,
 		"GET /api/plugins/market/search":   mcHandler.HandleSearchMarketPlugins,
 		"POST /api/plugins/market/install": mcHandler.HandleInstallMarketPlugin,
+
+		// Smart Flags & JVM Tuning
+		"GET /api/flags":         mcHandler.HandleGetFlags,
+		"POST /api/flags":        mcHandler.HandleSaveFlags,
+		"GET /api/flags/presets": mcHandler.HandleGetFlagPresets,
 	}
 
 	// Register all the protected routes

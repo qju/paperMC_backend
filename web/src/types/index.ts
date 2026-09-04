@@ -164,4 +164,28 @@ export interface ModrinthSearchResult {
     offset: number;
 }
 
+export interface ServerFlagsConfig {
+    ram: string;
+    preset: 'aikar' | 'minimal' | 'none' | 'custom' | string;
+    custom_flags: string;
+    updated_at?: string;
+}
+
+export interface FlagsStatusResponse {
+    configured: ServerFlagsConfig;
+    effective_flags: string[];
+    active_args?: string[];
+    restart_required: boolean;
+    server_running: boolean;
+}
+
+export interface FlagPresetInfo {
+    id: string;
+    name: string;
+    description: string;
+    doc_url: string;
+    sample_flags: string[];
+}
+
+
 

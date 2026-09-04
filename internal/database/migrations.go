@@ -78,6 +78,24 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     3,
+		Description: "Add server_flags table for JVM preset management",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS server_flags (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				ram TEXT NOT NULL DEFAULT '8G',
+				preset TEXT NOT NULL DEFAULT 'aikar',
+				custom_flags TEXT NOT NULL DEFAULT '',
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+			INSERT OR IGNORE INTO server_flags (id, ram, preset, custom_flags) VALUES (1, '8G', 'aikar', '');
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

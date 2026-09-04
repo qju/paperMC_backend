@@ -30,21 +30,23 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Fatalf("RunMigrations failed: %v", err)
 	}
 
-	// Schema version must now be 2
+	// Schema version must match total migrations
+	expectedVer := len(migrations)
 	verAfter, err := GetSchemaVersion(db)
 	if err != nil {
 		t.Fatalf("GetSchemaVersion failed: %v", err)
 	}
-	if verAfter != 2 {
-		t.Errorf("Expected schema version 2 after migrations, got %d", verAfter)
+	if verAfter != expectedVer {
+		t.Errorf("Expected schema version %d after migrations, got %d", expectedVer, verAfter)
 	}
 
-	// Verify schedules and schedule_logs tables exist
-	var schedCount, logCount int
+	// Verify schedules, schedule_logs, and server_flags tables exist
+	var schedCount, logCount, flagCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules';").Scan(&schedCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedule_logs';").Scan(&logCount)
-	if schedCount != 1 || logCount != 1 {
-		t.Errorf("Expected schedules and schedule_logs tables to exist: schedCount=%d, logCount=%d", schedCount, logCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='server_flags';").Scan(&flagCount)
+	if schedCount != 1 || logCount != 1 || flagCount != 1 {
+		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d", schedCount, logCount, flagCount)
 	}
 
 	// Re-running migrations must be idempotent
@@ -88,7 +90,7 @@ func TestMigrationsLegacyUnversionedDatabase(t *testing.T) {
 	}
 
 	verAfter, err := GetSchemaVersion(db)
-	if err != nil || verAfter != 2 {
-		t.Errorf("Expected schema version 2 after legacy upgrade, got %d", verAfter)
+	if err != nil || verAfter != len(migrations) {
+		t.Errorf("Expected schema version %d after legacy upgrade, got %d", len(migrations), verAfter)
 	}
 }

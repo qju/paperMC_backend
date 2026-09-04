@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -314,5 +315,38 @@ func (s *SQLiteStore) ClearScheduleLogs(scheduleID int) error {
 		return err
 	}
 	_, err := s.db.Exec("DELETE FROM schedule_logs")
+	return err
+}
+
+func (s *SQLiteStore) GetServerFlags() (*ServerFlags, error) {
+	row := s.db.QueryRow("SELECT ram, preset, custom_flags, updated_at FROM server_flags WHERE id = 1")
+	var f ServerFlags
+	var updatedStr string
+	if err := row.Scan(&f.RAM, &f.Preset, &f.CustomFlags, &updatedStr); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ServerFlags{
+				RAM:         "8G",
+				Preset:      "aikar",
+				CustomFlags: "",
+				UpdatedAt:   time.Now(),
+			}, nil
+		}
+		return nil, err
+	}
+	f.UpdatedAt = parseSQLiteTime(updatedStr)
+	return &f, nil
+}
+
+func (s *SQLiteStore) SaveServerFlags(flags *ServerFlags) error {
+	query := `
+	INSERT INTO server_flags (id, ram, preset, custom_flags, updated_at) 
+	VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(id) DO UPDATE SET 
+		ram = excluded.ram,
+		preset = excluded.preset,
+		custom_flags = excluded.custom_flags,
+		updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := s.db.Exec(query, flags.RAM, flags.Preset, flags.CustomFlags)
 	return err
 }
