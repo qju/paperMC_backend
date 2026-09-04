@@ -459,6 +459,95 @@ func TestModrinthClient_MockWorkflow(t *testing.T) {
 	}
 }
 
+func TestModrinthClient_InstallPlugin_FallbackAndEncoding(t *testing.T) {
+	pluginsDir := t.TempDir()
+	fakeJar := createFakeJarBytes(t, "FallbackPlugin", "2.0.0")
+	hasher := sha512.New()
+	hasher.Write(fakeJar)
+	sha512Hex := hex.EncodeToString(hasher.Sum(nil))
+
+	loaderQueryChecked := false
+	fallbackCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		if path == "/project/testproj/version" {
+			loadersParam := r.URL.Query().Get("loaders")
+			if loadersParam != "" {
+				loaderQueryChecked = true
+				// Verify loaders is valid JSON array containing paper/spigot
+				var loaders []string
+				if err := json.Unmarshal([]byte(loadersParam), &loaders); err != nil {
+					t.Errorf("Failed to unmarshal encoded loaders: %v", err)
+				}
+				// Return empty to test fallback
+				_ = json.NewEncoder(w).Encode([]ModrinthVersion{})
+				return
+			}
+
+			// Fallback call without loaders
+			fallbackCalled = true
+			_ = json.NewEncoder(w).Encode([]ModrinthVersion{
+				{
+					ID:         "ver999",
+					ProjectID:  "testproj",
+					Name:       "Release 2.0.0",
+					VersionNum: "2.0.0",
+					Files: []ModrinthFile{
+						{
+							Filename: "notes.txt",
+							Primary:  false,
+							URL:      "http://" + r.Host + "/download/notes.txt",
+						},
+						{
+							Filename: "fallback-2.0.0.jar",
+							Primary:  true,
+							URL:      "http://" + r.Host + "/download/plugin.jar",
+							Hashes: map[string]string{
+								"sha512": sha512Hex,
+							},
+						},
+					},
+				},
+			})
+			return
+		}
+
+		if path == "/download/plugin.jar" {
+			w.Header().Set("Content-Type", "application/java-archive")
+			_, _ = w.Write(fakeJar)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := &ModrinthClient{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+	}
+
+	info, err := client.InstallPlugin(pluginsDir, "testproj", "")
+	if err != nil {
+		t.Fatalf("InstallPlugin failed: %v", err)
+	}
+
+	if !loaderQueryChecked {
+		t.Errorf("Expected initial request with encoded loaders parameter")
+	}
+	if !fallbackCalled {
+		t.Errorf("Expected fallback request without loaders parameter")
+	}
+	if info.Name != "FallbackPlugin" || info.Version != "2.0.0" {
+		t.Errorf("Unexpected installed info: %+v", info)
+	}
+	if _, err := os.Stat(filepath.Join(pluginsDir, "fallback-2.0.0.jar")); err != nil {
+		t.Errorf("Expected fallback jar to be installed: %v", err)
+	}
+}
+
 func createFakeJarBytes(t *testing.T, pluginName, version string) []byte {
 	t.Helper()
 	buf := new(bytes.Buffer)
