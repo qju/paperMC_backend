@@ -40,14 +40,14 @@
 - [x] **Task:** Rolling in-memory metrics ring buffer (last 30 samples) with live SVG sparkline graphs.
 
 
-### Milestone 2.2: The Backup Engine (NEXT MILESTONE)
-- [ ] **Task:** Create `internal/backup` package.
-- [ ] **Task:** Implement "Snapshot Logic" (`save-off` -> Flush -> Zip -> `save-on`).
-- [ ] **Task:** API Endpoint `POST /api/backups/create`.
-- [ ] **Task:** API Endpoint `GET /api/backups` (List existing archive zips with metadata).
-- [ ] **Task:** API Endpoint `GET /api/backups/download?file=...`.
-- [ ] **Task:** Restore logic (Stop server -> Unzip -> Validate -> Start server).
-- [ ] **Task:** React UI for backup creation, progress, download, and restoration.
+### Milestone 2.2: The Backup Engine
+- [x] **Task:** Create `internal/backup` package.
+- [x] **Task:** Implement "Snapshot Logic" (`save-off` -> Flush -> Zip -> `save-on`).
+- [x] **Task:** API Endpoint `POST /api/backups/create`.
+- [x] **Task:** API Endpoint `GET /api/backups` (List existing archive zips with metadata).
+- [x] **Task:** API Endpoint `GET /api/backups/download?file=...`.
+- [x] **Task:** Restore logic (Stop server -> Unzip -> Validate -> Start server).
+- [x] **Task:** React UI for backup creation, progress, download, and restoration.
 
 ### Milestone 2.3: World Management & Diagnostics
 - [x] **Task:** Implement pure-Go zero-dependency GZIP binary NBT parser (`ReadLevelDat`) extracting MC version, gamemode, difficulty, hardcore, and last played time.
@@ -120,5 +120,5 @@
 - [x] **Task:** **World Manager:** Active world spotlight card, dimension badges, disk size calculator, level.dat NBT metadata, world creation, cloning, and deletion.
 - [x] **Task:** **Updates & Versions:** Major release group selector, latest build detector, changelog viewer, and one-click upgrade button.
 - [x] **Task:** **Web Users:** Operator account table, user creation modal, password reset modal, and safety guards.
-- [ ] **Task:** **Backups Page:** Backup listing, snapshot button, download links, and restore modal.
+- [x] **Task:** **Backups Page:** Backup listing, snapshot button, download links, and restore modal.
 - [x] **Task:** **Config Editor:** Visual editor for `server.properties` with categorized settings (General, Gameplay, Security, Performance, RCON), search filter, and raw editor toggle with comment preservation.

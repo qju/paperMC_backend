@@ -55,4 +55,14 @@ export interface Vitals {
     history?: MetricPoint[];
 }
 
+export interface BackupInfo {
+    filename: string;
+    size_bytes: number;
+    formatted_size: string;
+    created_at: string;
+    backup_type: 'world' | 'full' | string;
+    world_name?: string;
+    checksum_sha256?: string;
+}
+
 

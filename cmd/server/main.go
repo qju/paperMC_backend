@@ -126,6 +126,13 @@ func main() {
 		"POST /api/users":         mcHandler.HandleCreateUser,
 		"PUT /api/users/password": mcHandler.HandleUpdatePassword,
 		"DELETE /api/users":       mcHandler.HandleDeleteUser,
+
+		// Backups
+		"GET /api/backups":          mcHandler.HandleGetBackups,
+		"POST /api/backups/create":  mcHandler.HandleCreateBackup,
+		"GET /api/backups/download": mcHandler.HandleDownloadBackup,
+		"POST /api/backups/restore": mcHandler.HandleRestoreBackup,
+		"DELETE /api/backups":       mcHandler.HandleDeleteBackup,
 	}
 
 	// Register all the protected routes
