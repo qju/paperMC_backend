@@ -35,7 +35,7 @@
 ### Milestone 2.1: Modernized Resource & Vitals Monitoring
 - [x] **Task:** Multi-Core CPU tracking (`gopsutil/cpu`) with individual per-core workload breakdown (Core 0 vs Core 1) and process vs host load.
 - [x] **Task:** Storage headroom monitoring (`gopsutil/disk`) with low disk space alerts (<5GB).
-- [x] **Task:** Minecraft engine health indicators (TPS stability, MSPT tick time, JVM threads, and live uptime counter).
+- [x] **Task:** Minecraft engine health indicators (dynamic real-time TPS & MSPT tracking via Paper/Spigot `tps` / `mspt` poll parsing and lag warning detection with automated poll suppression, JVM threads, and live uptime counter).
 - [x] **Task:** Centralized WebSocket vitals broadcast (`/ws`) with real-time push replacing HTTP polling.
 - [x] **Task:** Rolling in-memory metrics ring buffer (last 30 samples) with live SVG sparkline graphs.
 

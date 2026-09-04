@@ -14,10 +14,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"paperMC_backend/internal/database"
@@ -88,6 +91,13 @@ type Server struct {
 	stdout io.ReadCloser
 	proc   *process.Process
 	cancel context.CancelFunc
+
+	// Dynamic TPS & MSPT tracking
+	currentTPS          float64
+	currentMSPT         float64
+	lastTPSUpdate       time.Time
+	internalPollPending int32
+	pollInterval        time.Duration
 }
 
 type Vitals struct {
@@ -111,10 +121,17 @@ type Vitals struct {
 }
 
 var uuidLogRegex = regexp.MustCompile(`UUID of player (.+) is ([0-9a-fA-F\-]+)`)
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\[[0-9;]*m`)
+var mcColorRegex = regexp.MustCompile(`§[0-9a-fk-orA-FK-OR]`)
+var tpsLogRegex = regexp.MustCompile(`(?i)TPS from last 1m,\s*5m,\s*15m:\s*\*?([0-9.]+),\s*\*?([0-9.]+),\s*\*?([0-9.]+)`)
+var msptLogRegex = regexp.MustCompile(`(?i)(?:⏵|\>)?\s*5s:\s*([0-9.]+)\s*/\s*([0-9.]+)\s*/\s*([0-9.]+)\s*ms`)
+var cantKeepUpRegex = regexp.MustCompile(`(?i)Can't keep up!.*Running\s+([0-9]+)ms\s+or\s+([0-9]+)\s+ticks behind`)
+var tickQueryRegex = regexp.MustCompile(`(?i)Current tick rate:\s*([0-9.]+)(?:/s)?.*?Average tick time:\s*([0-9.]+)ms`)
 
 func CleanString(input string) string {
-	return strings.TrimSpace(ansiRegex.ReplaceAllString(input, ""))
+	withoutAnsi := ansiRegex.ReplaceAllString(input, "")
+	withoutMC := mcColorRegex.ReplaceAllString(withoutAnsi, "")
+	return strings.TrimSpace(withoutMC)
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
@@ -160,10 +177,14 @@ func (s *Server) Start() error {
 
 	s.status = StatusRunning
 	s.startTime = time.Now()
+	s.currentTPS = 20.0
+	s.currentMSPT = 20.0
+	atomic.StoreInt32(&s.internalPollPending, 0)
 	s.mu.Unlock()
 
 	go s.monitorProcess()
 	go s.StreamLogs()
+	go s.pollVitals(ctx)
 
 	return nil
 }
@@ -201,10 +222,13 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) monitorProcess() {
-	var err error
-	s.proc, err = process.NewProcess(int32(s.cmd.Process.Pid))
+	p, err := process.NewProcess(int32(s.cmd.Process.Pid))
 	if err != nil {
 		s.cmd.Process.Kill()
+	} else {
+		s.mu.Lock()
+		s.proc = p
+		s.mu.Unlock()
 	}
 
 	s.cmd.Wait()
@@ -214,6 +238,9 @@ func (s *Server) monitorProcess() {
 	s.proc = nil
 	s.startTime = time.Time{}
 	s.OnlinePlayers = make(map[string]Player)
+	s.currentTPS = 0
+	s.currentMSPT = 0
+	atomic.StoreInt32(&s.internalPollPending, 0)
 	s.mu.Unlock()
 
 	s.cancel()
@@ -277,9 +304,17 @@ func (s *Server) GetVitals() Vitals {
 		}
 	}
 
-	// Baseline healthy Minecraft TPS & MSPT when running
-	vitals.TPS = 20.0
-	vitals.MSPT = 18.5
+	// Dynamic Minecraft TPS & MSPT when running
+	tpsVal := s.currentTPS
+	if tpsVal <= 0 {
+		tpsVal = 20.0
+	}
+	msptVal := s.currentMSPT
+	if msptVal <= 0 {
+		msptVal = 20.0
+	}
+	vitals.TPS = math.Round(tpsVal*100) / 100
+	vitals.MSPT = math.Round(msptVal*100) / 100
 
 	// Append data point to history ring buffer (capped at 30 entries)
 	point := MetricPoint{
@@ -305,9 +340,13 @@ func (s *Server) StreamLogs() {
 
 	for scanner.Scan() {
 		text := scanner.Text()
-		s.Broadcast("[MC] " + text)
-
 		cleanText := CleanString(text)
+
+		// Parse vitals & suppress console broadcast if this was an automated poll
+		isPollResponse := s.parseVitalsFromLog(cleanText)
+		if !isPollResponse {
+			s.Broadcast("[MC] " + text)
+		}
 
 		// Capture UUID
 		if strings.Contains(cleanText, "UUID of player") {
@@ -340,6 +379,135 @@ func (s *Server) StreamLogs() {
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Error reading log %v\n", err)
 	}
+}
+
+func (s *Server) consumeInternalPoll() bool {
+	for {
+		pending := atomic.LoadInt32(&s.internalPollPending)
+		if pending <= 0 {
+			return false
+		}
+		if atomic.CompareAndSwapInt32(&s.internalPollPending, pending, pending-1) {
+			return true
+		}
+	}
+}
+
+func (s *Server) queryTPS() {
+	s.mu.Lock()
+	running := (s.status == StatusRunning && s.stdin != nil)
+	s.mu.Unlock()
+
+	if !running {
+		return
+	}
+
+	atomic.AddInt32(&s.internalPollPending, 1)
+	if err := s.SendCommand("tps"); err != nil {
+		s.consumeInternalPoll()
+	}
+}
+
+func (s *Server) pollVitals(ctx context.Context) {
+	interval := s.pollInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	initialDelay := 2 * time.Second
+	if interval < initialDelay {
+		initialDelay = interval
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(initialDelay):
+		s.queryTPS()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.queryTPS()
+		}
+	}
+}
+
+func (s *Server) parseVitalsFromLog(cleanText string) bool {
+	// 1. Paper / Spigot TPS output: "TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0"
+	if matches := tpsLogRegex.FindStringSubmatch(cleanText); len(matches) >= 2 {
+		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
+			s.mu.Lock()
+			s.currentTPS = val
+			s.lastTPSUpdate = time.Now()
+			if s.currentTPS < 20.0 && s.currentTPS > 0 {
+				s.currentMSPT = 1000.0 / s.currentTPS
+			} else if s.currentTPS >= 20.0 && (s.currentMSPT == 0 || s.currentMSPT > 50.0) {
+				s.currentMSPT = 20.0
+			}
+			s.mu.Unlock()
+		}
+		if s.consumeInternalPoll() {
+			return true // Suppress automated background poll from console broadcast
+		}
+		return false
+	}
+
+	// 2. Paper MSPT output: "⏵ 5s: 14.5/11.2/35.8ms"
+	if matches := msptLogRegex.FindStringSubmatch(cleanText); len(matches) >= 2 {
+		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
+			s.mu.Lock()
+			s.currentMSPT = val
+			s.lastTPSUpdate = time.Now()
+			if val > 50.0 {
+				s.currentTPS = 1000.0 / val
+			} else if s.currentTPS == 0 {
+				s.currentTPS = 20.0
+			}
+			s.mu.Unlock()
+		}
+		return false
+	}
+
+	// 3. Minecraft "Can't keep up!" lag warning
+	if matches := cantKeepUpRegex.FindStringSubmatch(cleanText); len(matches) >= 3 {
+		behindMs, err1 := strconv.ParseFloat(matches[1], 64)
+		ticksBehind, err2 := strconv.ParseFloat(matches[2], 64)
+		if err1 == nil && err2 == nil && ticksBehind > 0 {
+			mspt := 50.0 + (behindMs / ticksBehind)
+			tps := 1000.0 / mspt
+			if tps > 20.0 {
+				tps = 20.0
+			}
+			s.mu.Lock()
+			s.currentMSPT = mspt
+			s.currentTPS = tps
+			s.lastTPSUpdate = time.Now()
+			s.mu.Unlock()
+		}
+		return false
+	}
+
+	// 4. Vanilla /tick query output: "Current tick rate: 20.0/s. Average tick time: 14.5ms"
+	if matches := tickQueryRegex.FindStringSubmatch(cleanText); len(matches) >= 3 {
+		tpsVal, err1 := strconv.ParseFloat(matches[1], 64)
+		msptVal, err2 := strconv.ParseFloat(matches[2], 64)
+		if err1 == nil && err2 == nil {
+			s.mu.Lock()
+			s.currentTPS = tpsVal
+			s.currentMSPT = msptVal
+			s.lastTPSUpdate = time.Now()
+			s.mu.Unlock()
+		}
+		return false
+	}
+
+	return false
 }
 
 func (s *Server) handleRejection(logLine string) {
