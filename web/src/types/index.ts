@@ -65,4 +65,26 @@ export interface BackupInfo {
     checksum_sha256?: string;
 }
 
+export interface Schedule {
+    id: number;
+    name: string;
+    cron_expr: string;
+    action_type: 'backup' | 'restart' | 'command' | 'broadcast' | 'start' | 'stop' | string;
+    payload?: string;
+    is_enabled: boolean;
+    created_at: string;
+    next_run_at?: string;
+}
+
+export interface ScheduleLog {
+    id: number;
+    schedule_id: number;
+    schedule_name: string;
+    action_type: string;
+    status: 'success' | 'failed' | string;
+    duration_ms: number;
+    error_message?: string;
+    executed_at: string;
+}
+
 

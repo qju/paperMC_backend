@@ -116,3 +116,120 @@ func TestSQLiteStoreUsersAndRejectedPlayers(t *testing.T) {
 		t.Errorf("Expected empty rejected player list after delete, got %d items", len(rejectedList))
 	}
 }
+
+func TestSQLiteStoreSchedulesAndLogs(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_sched.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize SQLite store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Create Schedule
+	sched := &Schedule{
+		Name:       "Daily World Backup",
+		CronExpr:   "0 4 * * *",
+		ActionType: "backup",
+		Payload:    `{"type":"world","world_name":"world"}`,
+		IsEnabled:  true,
+	}
+
+	if err := store.CreateSchedule(sched); err != nil {
+		t.Fatalf("CreateSchedule failed: %v", err)
+	}
+	if sched.ID <= 0 {
+		t.Fatalf("Expected positive schedule ID, got %d", sched.ID)
+	}
+
+	// 2. Get Schedule
+	fetched, err := store.GetSchedule(sched.ID)
+	if err != nil {
+		t.Fatalf("GetSchedule failed: %v", err)
+	}
+	if fetched.Name != sched.Name || fetched.CronExpr != sched.CronExpr || !fetched.IsEnabled {
+		t.Errorf("Fetched schedule mismatch: %+v", fetched)
+	}
+
+	// 3. List Schedules
+	list, err := store.ListSchedules()
+	if err != nil {
+		t.Fatalf("ListSchedules failed: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != sched.ID {
+		t.Fatalf("Expected 1 schedule in list, got %d", len(list))
+	}
+
+	// 4. Update Schedule
+	sched.Name = "Updated Nightly Backup"
+	sched.CronExpr = "0 3 * * *"
+	if err := store.UpdateSchedule(sched); err != nil {
+		t.Fatalf("UpdateSchedule failed: %v", err)
+	}
+
+	updated, _ := store.GetSchedule(sched.ID)
+	if updated.Name != "Updated Nightly Backup" || updated.CronExpr != "0 3 * * *" {
+		t.Errorf("Schedule was not updated correctly: %+v", updated)
+	}
+
+	// 5. Toggle Schedule
+	if err := store.ToggleSchedule(sched.ID, false); err != nil {
+		t.Fatalf("ToggleSchedule failed: %v", err)
+	}
+	toggled, _ := store.GetSchedule(sched.ID)
+	if toggled.IsEnabled {
+		t.Errorf("Expected schedule to be disabled")
+	}
+
+	// 6. Record Execution Logs (Success & Failure)
+	if err := store.RecordScheduleExecution(sched.ID, "success", 1250, ""); err != nil {
+		t.Fatalf("RecordScheduleExecution success failed: %v", err)
+	}
+	if err := store.RecordScheduleExecution(sched.ID, "failed", 350, "Disk write error"); err != nil {
+		t.Fatalf("RecordScheduleExecution failed attempt failed: %v", err)
+	}
+
+	// Verify schedule record has updated last_run stats
+	afterRun, _ := store.GetSchedule(sched.ID)
+	if afterRun.LastRunAt == nil || afterRun.LastRunStatus != "failed" || afterRun.LastRunError != "Disk write error" {
+		t.Errorf("Unexpected last run metadata: %+v", afterRun)
+	}
+
+	// 7. List Logs
+	logs, err := store.ListScheduleLogs(sched.ID, 50)
+	if err != nil {
+		t.Fatalf("ListScheduleLogs failed: %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("Expected 2 execution logs, got %d", len(logs))
+	}
+	if logs[0].Status != "failed" || logs[1].Status != "success" {
+		t.Errorf("Logs ordering or status unexpected: %+v", logs)
+	}
+
+	// Global log query without scheduleID filter
+	globalLogs, err := store.ListScheduleLogs(0, 10)
+	if err != nil || len(globalLogs) != 2 {
+		t.Fatalf("Global ListScheduleLogs failed: %v, len=%d", err, len(globalLogs))
+	}
+
+	// 8. Clear Logs
+	if err := store.ClearScheduleLogs(sched.ID); err != nil {
+		t.Fatalf("ClearScheduleLogs failed: %v", err)
+	}
+	logsAfterClear, _ := store.ListScheduleLogs(sched.ID, 50)
+	if len(logsAfterClear) != 0 {
+		t.Errorf("Expected 0 logs after clear, got %d", len(logsAfterClear))
+	}
+
+	// 9. Delete Schedule
+	if err := store.DeleteSchedule(sched.ID); err != nil {
+		t.Fatalf("DeleteSchedule failed: %v", err)
+	}
+	_, err = store.GetSchedule(sched.ID)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("Expected sql.ErrNoRows after deletion, got %v", err)
+	}
+}
+
