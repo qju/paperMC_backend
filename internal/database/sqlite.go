@@ -43,31 +43,50 @@ func (s *SQLiteStore) Migrate() error {
 }
 
 func (s *SQLiteStore) GetUser(username string) (*User, error) {
-	SQL := `SELECT id, username, password, role FROM users WHERE username = ?`
+	SQL := `
+		SELECT u.id, u.username, u.password, u.role, COALESCE(m.enabled, 0)
+		FROM users u
+		LEFT JOIN user_mfa m ON u.id = m.user_id
+		WHERE u.username = ?
+	`
 	row := s.db.QueryRow(SQL, username)
 
 	var user User
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Role)
+	var mfaEnabledInt int
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Role, &mfaEnabledInt)
 	if err != nil {
 		return nil, err
 	}
+	user.MFAEnabled = mfaEnabledInt == 1
 	return &user, nil
 }
 
 func (s *SQLiteStore) GetUserByID(id int) (*User, error) {
-	SQL := `SELECT id, username, password, role FROM users WHERE id = ?`
+	SQL := `
+		SELECT u.id, u.username, u.password, u.role, COALESCE(m.enabled, 0)
+		FROM users u
+		LEFT JOIN user_mfa m ON u.id = m.user_id
+		WHERE u.id = ?
+	`
 	row := s.db.QueryRow(SQL, id)
 
 	var user User
-	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Role)
+	var mfaEnabledInt int
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Role, &mfaEnabledInt)
 	if err != nil {
 		return nil, err
 	}
+	user.MFAEnabled = mfaEnabledInt == 1
 	return &user, nil
 }
 
 func (s *SQLiteStore) ListUsers() ([]User, error) {
-	SQL := `SELECT id, username, role FROM users ORDER BY id ASC`
+	SQL := `
+		SELECT u.id, u.username, u.role, COALESCE(m.enabled, 0)
+		FROM users u
+		LEFT JOIN user_mfa m ON u.id = m.user_id
+		ORDER BY u.id ASC
+	`
 	rows, err := s.db.Query(SQL)
 	if err != nil {
 		return nil, err
@@ -77,9 +96,11 @@ func (s *SQLiteStore) ListUsers() ([]User, error) {
 	users := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role); err != nil {
+		var mfaEnabledInt int
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &mfaEnabledInt); err != nil {
 			continue
 		}
+		u.MFAEnabled = mfaEnabledInt == 1
 		users = append(users, u)
 	}
 	return users, nil

@@ -196,3 +196,54 @@ func (h *Handler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		"username": username,
 	})
 }
+
+type AdminReset2FARequest struct {
+	Username string `json:"username"`
+}
+
+func (h *Handler) HandleAdminReset2FA(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondWithError(w, http.StatusInternalServerError, "Database store not configured")
+		return
+	}
+
+	var req AdminReset2FARequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = strings.TrimSpace(r.URL.Query().Get("username"))
+	}
+
+	if username == "" {
+		respondWithError(w, http.StatusBadRequest, "Username is required")
+		return
+	}
+
+	user, err := h.store.GetUser(username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.recordAudit(r, "user.reset_2fa", http.StatusNotFound, "User '"+username+"' not found")
+			respondWithError(w, http.StatusNotFound, "User not found")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+
+	// Delete user's MFA settings
+	if err := h.store.DeleteUserMFA(user.ID); err != nil {
+		h.recordAudit(r, "user.reset_2fa", http.StatusInternalServerError, "Failed to reset 2FA for '"+username+"': "+err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Failed to reset 2FA: "+err.Error())
+		return
+	}
+
+	// Revoke all active sessions for this user so they must re-authenticate
+	_ = h.store.RevokeUserSessions(user.ID)
+
+	h.recordAudit(r, "user.reset_2fa", http.StatusOK, "Administratively reset 2FA and revoked sessions for '"+username+"'")
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "Two-factor authentication reset successfully",
+		"username": username,
+	})
+}
+

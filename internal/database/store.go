@@ -5,10 +5,11 @@ import (
 )
 
 type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"-"` // hash, not serialized in JSON
-	Role     string `json:"role"`
+	ID         int    `json:"id"`
+	Username   string `json:"username"`
+	Password   string `json:"-"` // hash, not serialized in JSON
+	Role       string `json:"role"`
+	MFAEnabled bool   `json:"mfa_enabled"`
 }
 
 type RejectedPlayer struct {

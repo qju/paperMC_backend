@@ -138,10 +138,11 @@ func main() {
 		"DELETE /api/worlds":         mcHandler.HandleDeleteWorld,
 
 		// User Control (Web UI Users)
-		"GET /api/users":          mcHandler.HandleListUsers,
-		"POST /api/users":         mcHandler.HandleCreateUser,
-		"PUT /api/users/password": mcHandler.HandleUpdatePassword,
-		"DELETE /api/users":       mcHandler.HandleDeleteUser,
+		"GET /api/users":            mcHandler.HandleListUsers,
+		"POST /api/users":           mcHandler.HandleCreateUser,
+		"PUT /api/users/password":   mcHandler.HandleUpdatePassword,
+		"DELETE /api/users":         mcHandler.HandleDeleteUser,
+		"POST /api/users/reset-2fa": mcHandler.HandleAdminReset2FA,
 
 		// Two-Factor Authentication (2FA)
 		"GET /api/auth/2fa/status":   mcHandler.Handle2FAStatus,

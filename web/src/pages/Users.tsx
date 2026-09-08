@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
     Shield, Plus, Key, Trash2, RefreshCw, CheckCircle, XCircle,
     ShieldCheck, ShieldAlert, KeyRound, Copy, Check, QrCode,
-    Download, ArrowRight, ArrowLeft, AlertTriangle, Smartphone
+    Download, ArrowRight, ArrowLeft, AlertTriangle, Smartphone, RotateCcw
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -10,6 +10,7 @@ interface User {
     id: number;
     username: string;
     role: string;
+    mfa_enabled?: boolean;
 }
 
 interface Toast {
@@ -23,6 +24,17 @@ export default function Users() {
     const [loading, setLoading] = useState(true);
     const [toasts, setToasts] = useState<Toast[]>([]);
 
+    const currentUsername = (() => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return '';
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return payload.username || '';
+        } catch {
+            return '';
+        }
+    })();
+
     // Create User Modal
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newUsername, setNewUsername] = useState('');
@@ -34,6 +46,10 @@ export default function Users() {
     const [resetTargetUser, setResetTargetUser] = useState<string | null>(null);
     const [resetPassword, setResetPassword] = useState('');
     const [resetting, setResetting] = useState(false);
+
+    // Admin Reset 2FA Modal
+    const [reset2FATargetUser, setReset2FATargetUser] = useState<string | null>(null);
+    const [resetting2FA, setResetting2FA] = useState(false);
 
     // Two-Factor Authentication (2FA) State
     const [mfaEnabled, setMfaEnabled] = useState(false);
@@ -364,6 +380,39 @@ export default function Users() {
         } catch (err) {
             console.error("Delete user error", err);
             showToast("Network error deleting user", 'error');
+        }
+    };
+
+    const handleAdminReset2FA = async () => {
+        if (!reset2FATargetUser) return;
+        setResetting2FA(true);
+        const token = localStorage.getItem('token');
+        try {
+            const res = await fetch('/api/users/reset-2fa', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username: reset2FATargetUser })
+            });
+
+            const data = await safeParseJSON(res);
+            if (res.ok) {
+                showToast(`2FA for "${reset2FATargetUser}" has been reset. Active sessions revoked.`, 'success');
+                setReset2FATargetUser(null);
+                fetchUsers();
+                if (reset2FATargetUser === currentUsername) {
+                    setMfaEnabled(false);
+                }
+            } else {
+                showToast(data?.error || "Failed to reset 2FA", 'error');
+            }
+        } catch (err) {
+            console.error("Admin reset 2FA error", err);
+            showToast("Network error resetting 2FA", 'error');
+        } finally {
+            setResetting2FA(false);
         }
     };
 
@@ -840,6 +889,50 @@ export default function Users() {
                 </div>
             )}
 
+            {/* ADMIN RESET 2FA MODAL */}
+            {reset2FATargetUser && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-950 border border-yellow-500/30 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                            <h3 className="text-lg font-pixel text-yellow-400 flex items-center gap-2">
+                                <AlertTriangle size={20} /> Reset User 2FA
+                            </h3>
+                            <button onClick={() => setReset2FATargetUser(null)} className="text-white/50 hover:text-white transition-colors">
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="p-3.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-xs font-mono text-yellow-200/90 space-y-2">
+                            <p>
+                                Are you sure you want to administratively reset Two-Factor Authentication for <strong className="text-white">"{reset2FATargetUser}"</strong>?
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 text-yellow-100/70 text-[11px] pl-1">
+                                <li>Current authenticator secret and backup recovery codes will be erased immediately.</li>
+                                <li>All active sessions for this user will be revoked, requiring re-login.</li>
+                                <li>The user can log in with their password and pair a new authenticator device.</li>
+                            </ul>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setReset2FATargetUser(null)}
+                                className="px-4 py-2 rounded-lg font-mono text-sm bg-white/10 hover:bg-white/20 text-white transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleAdminReset2FA}
+                                disabled={resetting2FA}
+                                className="px-4 py-2 rounded-lg font-mono font-bold text-sm bg-red-600 hover:bg-red-500 text-white flex items-center gap-2 transition-colors shadow-lg"
+                            >
+                                {resetting2FA ? <RefreshCw size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                                {resetting2FA ? 'Resetting...' : 'Confirm & Reset 2FA'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -866,7 +959,7 @@ export default function Users() {
                 </div>
             </div>
 
-            {/* TWO-FACTOR AUTHENTICATION SECURITY CARD */}
+            {/* TWO-FACTOR AUTHENTICATION SECURITY CARD (PERSONAL ACCOUNT) */}
             <div className="bg-black/60 border border-white/10 rounded-xl p-6 backdrop-blur-md mb-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-start gap-3.5">
@@ -875,7 +968,9 @@ export default function Users() {
                         </div>
                         <div>
                             <div className="flex items-center gap-2.5">
-                                <h3 className="font-pixel text-lg text-white">Two-Factor Authentication (2FA)</h3>
+                                <h3 className="font-pixel text-lg text-white">
+                                    Your Account 2FA Security {currentUsername && <span className="text-mc-diamond text-sm font-mono font-normal">(@{currentUsername})</span>}
+                                </h3>
                                 <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border font-bold ${
                                     mfaEnabled
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
@@ -885,7 +980,7 @@ export default function Users() {
                                 </span>
                             </div>
                             <p className="text-xs font-mono text-white/50 mt-1 max-w-2xl leading-relaxed">
-                                Protect your administrator account with RFC 6238 time-based one-time passwords (TOTP) and 8 emergency backup recovery codes. Works with Google Authenticator, 1Password, and Authy.
+                                Manage time-based two-factor authentication (TOTP) for your individual session. In Lodestone, each administrator and operator maintains their own independent 2FA secret and backup recovery codes.
                             </p>
                         </div>
                     </div>
@@ -937,34 +1032,66 @@ export default function Users() {
                                             <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-white/80 border border-white/10">
                                                 {u.role}
                                             </span>
+                                            {u.username === currentUsername && (
+                                                <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-mc-diamond/20 text-mc-diamond border border-mc-diamond/30">
+                                                    You
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="text-xs font-mono text-white/40">User ID: #{u.id}</div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => {
-                                            setResetTargetUser(u.username);
-                                            setResetPassword('');
-                                        }}
-                                        title="Change Password"
-                                        className="p-2 bg-white/5 hover:bg-white/10 text-mc-gold rounded-lg transition-colors"
-                                    >
-                                        <Key size={16} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDeleteUser(u.username)}
-                                        disabled={users.length <= 1}
-                                        title={users.length <= 1 ? "Cannot delete the only remaining user" : "Delete User"}
-                                        className={`p-2 rounded-lg transition-colors border ${
-                                            users.length <= 1
-                                                ? 'opacity-30 cursor-not-allowed bg-black/20 text-white/30 border-transparent'
-                                                : 'bg-red-950/40 hover:bg-red-900/60 text-red-400 border-red-500/20'
-                                        }`}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                <div className="flex items-center gap-4">
+                                    {/* 2FA Status Badge */}
+                                    <div className="hidden sm:flex items-center">
+                                        {u.mfa_enabled ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                                                <ShieldCheck size={14} /> 2FA Active
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono text-white/40 bg-white/5 border border-white/10">
+                                                <ShieldAlert size={14} /> 2FA Inactive
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {/* Reset 2FA Button (Admin Break-Glass) */}
+                                        {u.mfa_enabled && (
+                                            <button
+                                                onClick={() => setReset2FATargetUser(u.username)}
+                                                title={`Reset 2FA for ${u.username}`}
+                                                className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-mono"
+                                            >
+                                                <RotateCcw size={15} />
+                                                <span className="hidden md:inline">Reset 2FA</span>
+                                            </button>
+                                        )}
+
+                                        <button
+                                            onClick={() => {
+                                                setResetTargetUser(u.username);
+                                                setResetPassword('');
+                                            }}
+                                            title="Change Password"
+                                            className="p-2 bg-white/5 hover:bg-white/10 text-mc-gold rounded-lg transition-colors"
+                                        >
+                                            <Key size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteUser(u.username)}
+                                            disabled={users.length <= 1}
+                                            title={users.length <= 1 ? "Cannot delete the only remaining user" : "Delete User"}
+                                            className={`p-2 rounded-lg transition-colors border ${
+                                                users.length <= 1
+                                                    ? 'opacity-30 cursor-not-allowed bg-black/20 text-white/30 border-transparent'
+                                                    : 'bg-red-950/40 hover:bg-red-900/60 text-red-400 border-red-500/20'
+                                            }`}
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))

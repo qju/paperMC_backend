@@ -243,3 +243,109 @@ func TestUserManagementValidationAndErrorCases(t *testing.T) {
 		t.Errorf("Expected 400 on missing username query param, got %d", wMissingUser.Code)
 	}
 }
+
+func TestAdminReset2FA(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_admin_reset_2fa.db")
+	store, err := database.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	mcServer := &minecraft.Server{
+		WorkDir: tempDir,
+		JarFile: "server.jar",
+		RAM:     "2G",
+	}
+	handler := NewServerHandler(mcServer, store)
+
+	// 1. Create two users: admin and operator
+	_ = store.CreateUser(&database.User{Username: "admin_user", Password: "pwd", Role: "admin"})
+	_ = store.CreateUser(&database.User{Username: "operator_user", Password: "pwd", Role: "operator"})
+
+	opUser, err := store.GetUser("operator_user")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+
+	// 2. Enable MFA for operator
+	_ = store.UpsertUserMFA(&database.UserMFA{
+		UserID:      opUser.ID,
+		Secret:      "SECRET123",
+		BackupCodes: "[]",
+		Enabled:     true,
+	})
+
+	// 3. Verify ListUsers shows operator has MFAEnabled=true
+	reqList := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	wList := httptest.NewRecorder()
+	handler.HandleListUsers(wList, reqList)
+	if wList.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", wList.Code)
+	}
+	var users []database.User
+	_ = json.NewDecoder(wList.Body).Decode(&users)
+	for _, u := range users {
+		if u.Username == "operator_user" && !u.MFAEnabled {
+			t.Errorf("Expected operator_user to have MFAEnabled=true in HandleListUsers")
+		}
+	}
+
+	// 4. Test Reset 2FA via JSON body
+	resetReq := AdminReset2FARequest{Username: "operator_user"}
+	bodyReset, _ := json.Marshal(resetReq)
+	reqReset := httptest.NewRequest(http.MethodPost, "/api/users/reset-2fa", bytes.NewReader(bodyReset))
+	wReset := httptest.NewRecorder()
+	handler.HandleAdminReset2FA(wReset, reqReset)
+
+	if wReset.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from HandleAdminReset2FA, got %d: %s", wReset.Code, wReset.Body.String())
+	}
+
+	// 5. Verify operator_user now has MFAEnabled=false
+	opAfterReset, _ := store.GetUser("operator_user")
+	if opAfterReset.MFAEnabled {
+		t.Errorf("Expected operator_user to have MFAEnabled=false after admin reset")
+	}
+
+	// 6. Test Reset 2FA via Query Parameter
+	_ = store.UpsertUserMFA(&database.UserMFA{
+		UserID:      opUser.ID,
+		Secret:      "SECRET456",
+		BackupCodes: "[]",
+		Enabled:     true,
+	})
+	reqResetQuery := httptest.NewRequest(http.MethodPost, "/api/users/reset-2fa?username=operator_user", bytes.NewReader([]byte("{}")))
+	wResetQuery := httptest.NewRecorder()
+	handler.HandleAdminReset2FA(wResetQuery, reqResetQuery)
+	if wResetQuery.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from HandleAdminReset2FA query param, got %d", wResetQuery.Code)
+	}
+
+	// 7. Error cases
+	// User not found
+	reqNotFound := httptest.NewRequest(http.MethodPost, "/api/users/reset-2fa", bytes.NewReader([]byte(`{"username":"unknown_ghost"}`)))
+	wNotFound := httptest.NewRecorder()
+	handler.HandleAdminReset2FA(wNotFound, reqNotFound)
+	if wNotFound.Code != http.StatusNotFound {
+		t.Errorf("Expected 404 for unknown user, got %d", wNotFound.Code)
+	}
+
+	// Missing username
+	reqBlank := httptest.NewRequest(http.MethodPost, "/api/users/reset-2fa", bytes.NewReader([]byte(`{"username":""}`)))
+	wBlank := httptest.NewRecorder()
+	handler.HandleAdminReset2FA(wBlank, reqBlank)
+	if wBlank.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for blank username, got %d", wBlank.Code)
+	}
+
+	// Nil store
+	nilHandler := NewServerHandler(mcServer, nil)
+	wNil := httptest.NewRecorder()
+	nilHandler.HandleAdminReset2FA(wNil, reqReset)
+	if wNil.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 on nil store, got %d", wNil.Code)
+	}
+}
+
