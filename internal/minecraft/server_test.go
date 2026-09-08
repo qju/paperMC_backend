@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"paperMC_backend/internal/crash"
 	"paperMC_backend/internal/database"
 )
 
@@ -853,5 +854,63 @@ func TestServerReadinessAndStartupDoneDetection(t *testing.T) {
 		t.Errorf("Expected StatusRunning in vitals after Done message, got %v", vitalsAfter.Status)
 	}
 }
+
+func TestServerCrashDetectionAndListener(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_crash_detect.db")
+	store, err := database.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	server := NewServer(tmpDir, "paper.jar", "4G", store)
+
+	// Command exits immediately with error
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "false")
+	}
+
+	// Broadcast an OOM error message into server history
+	server.Broadcast("java.lang.OutOfMemoryError: Java heap space")
+
+	crashCh := make(chan *database.CrashReport, 1)
+	server.AddCrashListener(func(r *database.CrashReport) {
+		crashCh <- r
+	})
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Wait for process to exit and crash listener to be triggered
+	select {
+	case report := <-crashCh:
+		if report == nil {
+			t.Fatalf("Received nil crash report")
+		}
+		if report.Category != crash.CategoryOOM {
+			t.Errorf("Expected category %s, got %s", crash.CategoryOOM, report.Category)
+		}
+		if report.Culprit != "JVM Heap Exhaustion" {
+			t.Errorf("Expected culprit 'JVM Heap Exhaustion', got %s", report.Culprit)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("Timed out waiting for crash listener to fire")
+	}
+
+	// Verify report was persisted in DB
+	reports, total, err := store.ListCrashReports(10, 0)
+	if err != nil || total < 1 || len(reports) < 1 {
+		t.Fatalf("Expected at least 1 crash report in DB, got total=%d, err=%v", total, err)
+	}
+	if reports[0].Category != crash.CategoryOOM {
+		t.Errorf("DB crash report category mismatch: %s", reports[0].Category)
+	}
+}
+
 
 

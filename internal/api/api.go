@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"paperMC_backend/internal/ai"
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
@@ -26,6 +27,7 @@ type Handler struct {
 	scheduler      *scheduler.Service
 	geyserClient   *plugins.GeyserClient
 	modrinthClient *plugins.ModrinthClient
+	aiClient       *ai.Client
 }
 
 type StatusResponse struct {
@@ -68,11 +70,16 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 		scheduler:      sched,
 		geyserClient:   plugins.NewGeyserClient(),
 		modrinthClient: plugins.NewModrinthClient(),
+		aiClient:       ai.NewClient(),
 	}
 
 	if mcServer != nil {
 		mcServer.AddListener(func(msg string) {
 			h.hub.Broadcast(WSMessage{Type: "log", Data: msg})
+		})
+
+		mcServer.AddCrashListener(func(report *database.CrashReport) {
+			h.hub.Broadcast(WSMessage{Type: "crash_alert", Data: report})
 		})
 
 		// Broadcast live vitals over WebSockets every 1.5 seconds

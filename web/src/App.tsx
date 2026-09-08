@@ -11,6 +11,7 @@ import Backups from './pages/Backups';
 import Schedules from './pages/Schedules';
 import Plugins from './pages/Plugins';
 import AuditLogs from './pages/AuditLogs';
+import CrashAnalyst from './pages/CrashAnalyst';
 import type { JSX } from 'react';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -41,6 +42,7 @@ function App() {
                     <Route path="schedules" element={<Schedules />} />
                     <Route path="plugins" element={<Plugins />} />
                     <Route path="audit" element={<AuditLogs />} />
+                    <Route path="crash" element={<CrashAnalyst />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

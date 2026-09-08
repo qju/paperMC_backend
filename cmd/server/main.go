@@ -165,6 +165,15 @@ func main() {
 		// Audit Logs
 		"GET /api/audit":    mcHandler.HandleGetAuditLogs,
 		"DELETE /api/audit": mcHandler.HandleClearAuditLogs,
+
+		// Crash Analyst & AI Diagnostics
+		"GET /api/crash":             mcHandler.HandleListCrashReports,
+		"GET /api/crash/{id}":        mcHandler.HandleGetCrashReport,
+		"POST /api/crash/analyze":    mcHandler.HandleAnalyzeCrash,
+		"DELETE /api/crash":          mcHandler.HandleDeleteCrashReport,
+		"GET /api/crash/ai-config":   mcHandler.HandleGetAISettings,
+		"POST /api/crash/ai-config":  mcHandler.HandleSaveAISettings,
+		"POST /api/crash/ai-explain": mcHandler.HandleAIExplainCrash,
 	}
 
 	// Register all the protected routes
