@@ -7,6 +7,9 @@
 
 ## Features
 
+- **Multi-Factor Authentication (2FA) & Session Hardening:** RFC 6238 TOTP two-factor authentication compatible with Google Authenticator, 1Password, and Authy, 8 single-use emergency recovery backup codes, sliding-window brute-force rate limiter (5 attempts, 15m lockout), anti-enumeration timing equalization via dummy bcrypt checks, and dual-token session architecture (short-lived access tokens + auto-rotated refresh tokens in HttpOnly strict cookies).
+- **Java Process Isolation Engine & Sandboxing:** Unprivileged Linux process isolation via Bubblewrap (`bwrap`) with read-only root (`--ro-bind / /`), isolated private `/tmp`, dropped capabilities (`--cap-drop ALL`), unshared PID/IPC/UTS namespaces, and automatic masking of sensitive credentials and database files (`paper.db`, `.env`). Also supports POSIX DAC user separation (`ISOLATION_MODE=user`).
+- **Defensive Engineering & Vulnerability Hardening:** Zero known dependencies vulnerabilities (`govulncheck` clean, `npm audit` 0 vulnerabilities), WebSocket Cross-Site Hijacking (CSWSH) origin validation, and Zip Slip symlink traversal rejection in backup restoration.
 - **Multi-Core & Real-Time Vitals Monitoring:** Track per-core CPU load (Core 0 vs Core 1), JVM process vs host system utilization, JVM threads, memory RSS, disk storage headroom (<5GB alerts), live uptime counter, TPS/MSPT engine tick rate, and rolling time-series sparklines via real-time WebSocket push (`/ws`).
 - **Real-Time Console:** Bidirectional WebSocket streaming with centralized broadcast hub and ANSI terminal emulation.
 - **Player Management:** Whitelist, Ban, Operator controls, rejected connection intelligence, live search, and pagination.
@@ -32,6 +35,7 @@
 - Go 1.22 or later
 - Java 21 or later (to execute PaperMC)
 - Node.js (only required if building/modifying the frontend)
+- Bubblewrap `bwrap` (optional, recommended on Linux for process isolation)
 
 ### Installation
 
@@ -56,7 +60,11 @@ The application is configured using environment variables:
 | `DBNAME` | SQLite database filepath. | `paper.db` |
 | `ADMIN_USER` | Initial admin username (bootstrapped on startup). | `admin` |
 | `ADMIN_PASS` | Initial admin password. | **Required** |
-| `JWT_SECRET` | Secret key for signing JWT tokens. | Dev fallback |
+| `JWT_SECRET` | Secret key for signing JWT tokens. | Ephemeral 256-bit crypto key |
+| `ISOLATION_MODE` | Process isolation strategy: `bwrap`, `user`, or `none`. | `none` |
+| `MINECRAFT_USER` | Target username for POSIX DAC user separation (`ISOLATION_MODE=user`). | `minecraft` |
+| `MINECRAFT_UID` | Explicit target UID for POSIX process isolation. | `0` (auto-lookup) |
+| `MINECRAFT_GID` | Explicit target GID for POSIX process isolation. | `0` (auto-lookup) |
 
 ### Running the Server Locally
 
@@ -232,6 +240,16 @@ journalctl -u lodestone -f
 - `POST /api/profiler/health`: Retrieve or parse performance health snapshot (TPS, MSPT, CPU, Heap, GC, Disk) with automated tuning advice (`{"log": "...", "save": true|false}`).
 - `POST /api/profiler/trigger`: Dispatch Spark or Timings commands directly to running server (`{"action": "health"|"sampler_start"|"sampler_stop"|"timings_paste"|"timings_reset"|"custom", "command": "..."}`).
 
+### Authentication & Multi-Factor (2FA) Endpoints
+- `POST /api/auth/login` (or `POST /login`): Authenticate with anti-enumeration protection and brute-force sliding-window rate limiting. Returns token and session refresh token or `mfa_required` challenge.
+- `POST /api/auth/2fa/verify-login`: Complete login challenge using TOTP code or emergency backup recovery code.
+- `POST /api/auth/refresh`: Rotate refresh token and issue a fresh short-lived access token (reads from HttpOnly cookie or payload).
+- `POST /api/auth/logout`: Revoke active session and invalidate refresh cookies.
+- `GET /api/auth/2fa/status`: Check whether 2FA is active for the current authenticated user.
+- `POST /api/auth/2fa/setup`: Generate a new 160-bit TOTP secret, `otpauth://` URI, and 8 single-use backup recovery codes.
+- `POST /api/auth/2fa/enable`: Confirm and activate 2FA with an initial 6-digit TOTP code.
+- `POST /api/auth/2fa/disable`: Deactivate 2FA using a valid code or account password.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -250,7 +268,7 @@ journalctl -u lodestone -f
 - [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
 - [x] Milestone 3.3 (Audit): Administrative Action Audit Logs
 - [x] Milestone 3.3 (Crash Analyst): Crash Analyst & Heuristic Log Diagnostic Engine with Optional AI Consultation
-
+- [x] Milestone 5.0 (Security & Hardening): Vulnerability Remediation, MFA/TOTP 2FA, Anti-Enumeration & Rate-Limiting, Session Revocation, and Java Bubblewrap Process Isolation Sandbox
 
 ## License
 

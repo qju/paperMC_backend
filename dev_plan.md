@@ -159,3 +159,31 @@
 - [x] **Task:** **Audit Logs Dashboard:** Chronological administrative activity audit log viewer with category badges, user filters, search, IP tracking, and history purge modal.
 - [x] **Task:** **Crash Analyst Dashboard:** Heuristic diagnostics incident viewer with category filter badges, root-cause summaries, step-by-step resolution advice, raw stack trace drawer, manual log dump analyzer, AI configuration modal, and interactive AI consultation assistant.
 - [x] **Task:** **Performance Profiler & Spark Dashboard:** Dark glassmorphic dashboard (`web/src/pages/PerformanceProfiler.tsx`) featuring real-time telemetry metrics (TPS, MSPT, CPU, Memory Heap), GC collection monitoring, automated JVM tuning heuristics, quick action dispatcher, custom command runner, live captured profiler URL banner, and historical reports archive with modal inspection.
+
+---
+
+## 🛡️ Phase 5: Security Hardening, Multi-Factor Authentication & Process Isolation
+*Focus: Enterprise-grade authentication, vulnerability elimination, and unprivileged Linux sandboxing.*
+
+### Milestone 5.1: Dependency & Source-Level Vulnerability Remediation
+- [x] **Task:** Audit and eliminate all vulnerable frontend npm packages (`npm audit fix` resolved all 17 vulnerabilities, achieving 0 vulnerabilities).
+- [x] **Task:** Upgrade vulnerable Go dependencies (`golang.org/x/crypto` v0.57.0, `golang.org/x/sys` v0.48.0) and verify with `govulncheck` (0 application vulnerabilities).
+- [x] **Task:** Remediate static hardcoded dev JWT secret fallback with cryptographically secure 256-bit random key generation (`crypto/rand`) and thread-safe key accessors.
+- [x] **Task:** Harden WebSocket endpoint against Cross-Site WebSocket Hijacking (CSWSH) via strict host origin verification in `CheckOrigin`.
+- [x] **Task:** Defend against Zip Slip symlink traversal attacks in backup extraction (`os.ModeSymlink` rejection).
+
+### Milestone 5.2: Enhanced Authentication, Session Lifecycle & RFC 6238 TOTP 2FA
+- [x] **Task:** Database migration v7 (`user_mfa` and `user_sessions` tables) with user FK cascading and expiry indexing.
+- [x] **Task:** Implement sliding-window IP brute-force rate limiter (5 failed attempts, 15m lockout with `Retry-After` header).
+- [x] **Task:** Mitigate user enumeration side-channels and timing differences on `/login` with constant-time dummy bcrypt execution and unified 401 responses.
+- [x] **Task:** Implement RFC 6238 TOTP multi-factor engine with $\pm 30$s clock drift tolerance, base32 secret encoding, and `otpauth://` URI generator.
+- [x] **Task:** Implement 8 emergency single-use backup recovery codes with hashed verification and database consumption.
+- [x] **Task:** Implement dual-token session architecture: short-lived access JWT (15m) + rotated refresh tokens (7d) in HttpOnly strict cookies.
+- [x] **Task:** Expose REST endpoints: `POST /api/auth/login`, `POST /api/auth/2fa/verify-login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/2fa/status`, `POST /api/auth/2fa/setup`, `POST /api/auth/2fa/enable`, `POST /api/auth/2fa/disable`.
+
+### Milestone 5.3: Java Process Isolation Engine & System Hardening
+- [x] **Task:** Implement process isolation engine (`internal/minecraft/sandbox.go`) supporting `none`, `user`, and `bwrap` modes.
+- [x] **Task:** Implement Bubblewrap (`bwrap`) unprivileged sandbox profile: read-only root (`--ro-bind / /`), isolated private `/tmp`, dropped capabilities (`--cap-drop ALL`), unshared PID/UTS/IPC namespaces, and automatic masking of sensitive credentials and database files (`paper.db`, `.env`).
+- [x] **Task:** Implement POSIX DAC user credential separation via `SysProcAttr.Credential` (`ISOLATION_MODE=user`).
+- [x] **Task:** Harden systemd service configuration (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=yes`, `PrivateTmp=yes`, `RestrictSUIDSGID=yes`).
+- [x] **Task:** Maintain strict $\ge 80\%$ statement test coverage across all internal packages with deterministic pass.

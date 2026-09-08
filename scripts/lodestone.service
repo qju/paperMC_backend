@@ -17,6 +17,7 @@ Environment="DBNAME=/opt/lodestone/paper.db"
 Environment="ADMIN_USER=admin"
 Environment="ADMIN_PASS=ChangeMeImmediately!"
 Environment="JWT_SECRET=ReplaceWithAStrongSecretKeyForProduction"
+Environment="ISOLATION_MODE=bwrap"
 
 # Executable location
 ExecStart=/opt/lodestone/lodestone
@@ -31,6 +32,16 @@ LimitNPROC=4096
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=lodestone
+
+# Linux OS & Systemd Security Hardening
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=/opt/lodestone /opt/lodestone/paperMS
 
 [Install]
 WantedBy=multi-user.target

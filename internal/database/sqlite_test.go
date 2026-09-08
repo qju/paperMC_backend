@@ -626,6 +626,157 @@ func TestSQLiteStoreProfilerReports(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreMFAAndSessions(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "mfa_session_test.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Seed user
+	user := &User{Username: "mfa_tester", Password: "hashed_pw", Role: "admin"}
+	if err := store.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+	fetchedUser, err := store.GetUser("mfa_tester")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+
+	// 2. Test GetUserMFA when not set
+	mfa, err := store.GetUserMFA(fetchedUser.ID)
+	if err != nil {
+		t.Fatalf("GetUserMFA failed: %v", err)
+	}
+	if mfa != nil {
+		t.Errorf("Expected nil MFA for new user, got %+v", mfa)
+	}
+
+	// 3. UpsertUserMFA (initial pending)
+	newMFA := &UserMFA{
+		UserID:      fetchedUser.ID,
+		Secret:      "JBSWY3DPEHPK3PXP",
+		BackupCodes: `["hash1", "hash2"]`,
+		Enabled:     false,
+	}
+	if err := store.UpsertUserMFA(newMFA); err != nil {
+		t.Fatalf("UpsertUserMFA failed: %v", err)
+	}
+
+	fetchedMFA, err := store.GetUserMFA(fetchedUser.ID)
+	if err != nil || fetchedMFA == nil {
+		t.Fatalf("GetUserMFA failed after insert: %v", err)
+	}
+	if fetchedMFA.Secret != "JBSWY3DPEHPK3PXP" || fetchedMFA.Enabled != false {
+		t.Errorf("Unexpected MFA record: %+v", fetchedMFA)
+	}
+
+	// 4. Update MFA to enabled
+	fetchedMFA.Enabled = true
+	if err := store.UpsertUserMFA(fetchedMFA); err != nil {
+		t.Fatalf("UpsertUserMFA update failed: %v", err)
+	}
+	activeMFA, _ := store.GetUserMFA(fetchedUser.ID)
+	if activeMFA == nil || !activeMFA.Enabled {
+		t.Errorf("Expected MFA enabled=true, got %+v", activeMFA)
+	}
+
+	// 5. Delete MFA
+	if err := store.DeleteUserMFA(fetchedUser.ID); err != nil {
+		t.Fatalf("DeleteUserMFA failed: %v", err)
+	}
+	deletedMFA, _ := store.GetUserMFA(fetchedUser.ID)
+	if deletedMFA != nil {
+		t.Errorf("Expected nil MFA after deletion, got %+v", deletedMFA)
+	}
+
+	// 6. Sessions
+	sess := &UserSession{
+		ID:               "sess-uuid-1",
+		UserID:           fetchedUser.ID,
+		RefreshTokenHash: "refresh_hash_abc",
+		UserAgent:        "Mozilla/5.0 Test",
+		IPAddress:        "127.0.0.1",
+		ExpiresAt:        time.Now().Add(7 * 24 * time.Hour),
+		Revoked:          false,
+	}
+	if err := store.CreateSession(sess); err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	fetchedSess, err := store.GetSession("sess-uuid-1")
+	if err != nil || fetchedSess == nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if fetchedSess.RefreshTokenHash != "refresh_hash_abc" || fetchedSess.Revoked {
+		t.Errorf("Unexpected fetched session: %+v", fetchedSess)
+	}
+
+	byHash, err := store.GetSessionByTokenHash("refresh_hash_abc")
+	if err != nil || byHash == nil {
+		t.Fatalf("GetSessionByTokenHash failed: %v", err)
+	}
+	if byHash.ID != "sess-uuid-1" {
+		t.Errorf("Expected sess-uuid-1, got %s", byHash.ID)
+	}
+
+	// Rotate refresh token
+	newExpiry := time.Now().Add(14 * 24 * time.Hour)
+	if err := store.UpdateSessionTokenHash("sess-uuid-1", "rotated_hash_def", newExpiry); err != nil {
+		t.Fatalf("UpdateSessionTokenHash failed: %v", err)
+	}
+	rotatedSess, _ := store.GetSession("sess-uuid-1")
+	if rotatedSess.RefreshTokenHash != "rotated_hash_def" {
+		t.Errorf("Expected rotated hash, got %s", rotatedSess.RefreshTokenHash)
+	}
+
+	// Revoke individual session
+	if err := store.RevokeSession("sess-uuid-1"); err != nil {
+		t.Fatalf("RevokeSession failed: %v", err)
+	}
+	revokedSess, _ := store.GetSession("sess-uuid-1")
+	if !revokedSess.Revoked {
+		t.Errorf("Expected revoked=true")
+	}
+
+	// Revoke all user sessions
+	sess2 := &UserSession{
+		ID:               "sess-uuid-2",
+		UserID:           fetchedUser.ID,
+		RefreshTokenHash: "refresh_hash_2",
+		ExpiresAt:        time.Now().Add(7 * 24 * time.Hour),
+		Revoked:          false,
+	}
+	_ = store.CreateSession(sess2)
+	if err := store.RevokeUserSessions(fetchedUser.ID); err != nil {
+		t.Fatalf("RevokeUserSessions failed: %v", err)
+	}
+	sess2Fetched, _ := store.GetSession("sess-uuid-2")
+	if !sess2Fetched.Revoked {
+		t.Errorf("Expected sess-uuid-2 to be revoked")
+	}
+
+	// Clean expired sessions
+	expiredSess := &UserSession{
+		ID:               "sess-expired",
+		UserID:           fetchedUser.ID,
+		RefreshTokenHash: "refresh_hash_exp",
+		ExpiresAt:        time.Now().Add(-1 * time.Hour),
+		Revoked:          false,
+	}
+	_ = store.CreateSession(expiredSess)
+	if err := store.CleanExpiredSessions(); err != nil {
+		t.Fatalf("CleanExpiredSessions failed: %v", err)
+	}
+	cleaned, _ := store.GetSession("sess-expired")
+	if cleaned != nil {
+		t.Errorf("Expected expired session to be deleted, got %+v", cleaned)
+	}
+}
+
 
 
 

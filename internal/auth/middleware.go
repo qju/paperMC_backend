@@ -68,6 +68,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		if claims.MFAPending {
+			http.Error(w, "Unauthorized: Multi-factor authentication required", http.StatusUnauthorized)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), UserKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

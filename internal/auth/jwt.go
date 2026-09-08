@@ -48,16 +48,29 @@ func GetJWTSecret() []byte {
 }
 
 type Claims struct {
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	Username   string `json:"username"`
+	Role       string `json:"role"`
+	UserID     int    `json:"user_id,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	MFAPending bool   `json:"mfa_pending,omitempty"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(username, role string) (string, error) {
-	expiration := time.Now().Add(24 * time.Hour)
+	return GenerateSessionToken(0, username, role, "", 24*time.Hour)
+}
+
+func GenerateSessionToken(userID int, username, role, sessionID string, duration time.Duration) (string, error) {
+	if duration <= 0 {
+		duration = 24 * time.Hour
+	}
+	expiration := time.Now().Add(duration)
 	claims := &Claims{
-		Username: username,
-		Role:     role,
+		Username:   username,
+		Role:       role,
+		UserID:     userID,
+		SessionID:  sessionID,
+		MFAPending: false,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiration),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

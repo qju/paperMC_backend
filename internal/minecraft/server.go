@@ -109,6 +109,9 @@ type Server struct {
 
 	// Active launch arguments
 	activeArgs []string
+
+	// Process isolation and sandboxing
+	isolationCfg IsolationConfig
 }
 
 type Vitals struct {
@@ -187,8 +190,12 @@ func (s *Server) Start() error {
 	s.activeArgs = make([]string, len(cmdArgs))
 	copy(s.activeArgs, cmdArgs)
 
-	s.cmd = ExecCommandContext(ctx, "java", cmdArgs...)
-	s.cmd.Dir = s.WorkDir
+	cmd, errCmd := BuildSandboxCommand(ctx, s.isolationCfg, s.WorkDir, cmdArgs)
+	if errCmd != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("failed to configure sandboxed command: %w", errCmd)
+	}
+	s.cmd = cmd
 
 	pipeIn, errIn := s.cmd.StdinPipe()
 	if errIn != nil {
@@ -854,6 +861,21 @@ func NewServer(workDir string, jarFile string, ram string, store database.Store)
 		OnlinePlayers: make(map[string]Player),
 		uuidCache:     make(map[string]string),
 
-		Args: []string{},
+		Args:         []string{},
+		isolationCfg: DefaultIsolationConfig(),
 	}
+}
+
+// SetIsolationConfig configures the process sandboxing parameters.
+func (s *Server) SetIsolationConfig(cfg IsolationConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.isolationCfg = cfg
+}
+
+// GetIsolationConfig returns the current process sandboxing configuration.
+func (s *Server) GetIsolationConfig() IsolationConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isolationCfg
 }

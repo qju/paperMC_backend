@@ -28,6 +28,9 @@ func TestConfigLoad(t *testing.T) {
 	if cfg.AdminUser != "admin" {
 		t.Errorf("Expected default AdminUser 'admin', got '%s'", cfg.AdminUser)
 	}
+	if cfg.IsolationMode != "none" {
+		t.Errorf("Expected default IsolationMode 'none', got '%s'", cfg.IsolationMode)
+	}
 
 	// Test Environment Overrides
 	_ = os.Setenv("PORT", "9090")
@@ -37,6 +40,8 @@ func TestConfigLoad(t *testing.T) {
 	_ = os.Setenv("DBNAME", "test.db")
 	_ = os.Setenv("ADMIN_USER", "superadmin")
 	_ = os.Setenv("ADMIN_PASS", "supersecret")
+	_ = os.Setenv("ISOLATION_MODE", "bwrap")
+	_ = os.Setenv("MINECRAFT_USER", "mc_dedicated")
 
 	defer func() {
 		_ = os.Unsetenv("PORT")
@@ -46,11 +51,14 @@ func TestConfigLoad(t *testing.T) {
 		_ = os.Unsetenv("DBNAME")
 		_ = os.Unsetenv("ADMIN_USER")
 		_ = os.Unsetenv("ADMIN_PASS")
+		_ = os.Unsetenv("ISOLATION_MODE")
+		_ = os.Unsetenv("MINECRAFT_USER")
 	}()
 
 	customCfg := Load()
 	if customCfg.Port != "9090" || customCfg.WorkDir != "/custom/path" || customCfg.JarFile != "paper-custom.jar" ||
-		customCfg.RAM != "16G" || customCfg.DBName != "test.db" || customCfg.AdminUser != "superadmin" || customCfg.AdminPass != "supersecret" {
+		customCfg.RAM != "16G" || customCfg.DBName != "test.db" || customCfg.AdminUser != "superadmin" || customCfg.AdminPass != "supersecret" ||
+		customCfg.IsolationMode != "bwrap" || customCfg.MinecraftUser != "mc_dedicated" {
 		t.Errorf("Custom config values not loaded correctly: %+v", customCfg)
 	}
 }

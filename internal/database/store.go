@@ -67,6 +67,7 @@ type Store interface {
 
 	// User Auth
 	GetUser(username string) (*User, error)
+	GetUserByID(id int) (*User, error)
 	ListUsers() ([]User, error)
 	CreateUser(user *User) error
 	UpdateUserPassword(username, passwordHash string) error
@@ -112,6 +113,38 @@ type Store interface {
 	GetProfilerReport(id int) (*ProfilerReport, error)
 	DeleteProfilerReport(id int) error
 	ClearProfilerReports() error
+
+	// MFA & Session Hardening
+	GetUserMFA(userID int) (*UserMFA, error)
+	UpsertUserMFA(mfa *UserMFA) error
+	DeleteUserMFA(userID int) error
+	CreateSession(session *UserSession) error
+	GetSession(sessionID string) (*UserSession, error)
+	GetSessionByTokenHash(tokenHash string) (*UserSession, error)
+	UpdateSessionTokenHash(sessionID string, newHash string, newExpiresAt time.Time) error
+	RevokeSession(sessionID string) error
+	RevokeUserSessions(userID int) error
+	CleanExpiredSessions() error
+}
+
+type UserMFA struct {
+	UserID      int       `json:"user_id"`
+	Secret      string    `json:"-"`
+	BackupCodes string    `json:"-"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type UserSession struct {
+	ID               string    `json:"id"`
+	UserID           int       `json:"user_id"`
+	RefreshTokenHash string    `json:"-"`
+	UserAgent        string    `json:"user_agent"`
+	IPAddress        string    `json:"ip_address"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	Revoked          bool      `json:"revoked"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type CrashReport struct {

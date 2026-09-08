@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"paperMC_backend/internal/auth"
+	"paperMC_backend/internal/database"
 )
 
 type LoginRequest struct {
@@ -15,7 +17,11 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
+	Token        string         `json:"token,omitempty"`
+	RefreshToken string         `json:"refresh_token,omitempty"`
+	MFARequired  bool           `json:"mfa_required,omitempty"`
+	MFAToken     string         `json:"mfa_token,omitempty"`
+	User         *database.User `json:"user,omitempty"`
 }
 
 // dummyBcryptHash is a valid bcrypt hash format used to equalize execution timing on failed lookups
@@ -74,17 +80,58 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Successful login: reset rate limit failure count
+	// Successful password check: reset rate limit failure count
 	if h.loginLimiter != nil {
 		h.loginLimiter.Reset(ip)
 	}
 
-	token, err := auth.GenerateToken(user.Username, user.Role)
+	// Check if MFA is configured and active for this user
+	mfa, err := h.store.GetUserMFA(user.ID)
+	if err == nil && mfa != nil && mfa.Enabled {
+		mfaToken, err := auth.GenerateMFAPendingToken(user.ID, user.Username)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to generate MFA challenge token")
+			return
+		}
+		h.recordAuditWithUser(user.Username, r, "auth.login_mfa_required", http.StatusOK, "MFA challenge issued")
+		respondWithJSON(w, http.StatusOK, LoginResponse{
+			MFARequired: true,
+			MFAToken:    mfaToken,
+		})
+		return
+	}
+
+	// Issue session and tokens
+	rawRefresh, tokenHash, err := auth.GenerateRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to issue session")
+		return
+	}
+
+	sessionID := generateSessionID()
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	sess := &database.UserSession{
+		ID:               sessionID,
+		UserID:           user.ID,
+		RefreshTokenHash: tokenHash,
+		UserAgent:        r.UserAgent(),
+		IPAddress:        ip,
+		ExpiresAt:        expiresAt,
+		Revoked:          false,
+	}
+	_ = h.store.CreateSession(sess)
+
+	accessToken, err := auth.GenerateSessionToken(user.ID, user.Username, user.Role, sessionID, 15*time.Minute)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to generate authentication token")
 		return
 	}
 
+	setRefreshTokenCookie(w, r, rawRefresh, expiresAt)
 	h.recordAuditWithUser(user.Username, r, "auth.login", http.StatusOK, "Successful authentication")
-	respondWithJSON(w, http.StatusOK, LoginResponse{Token: token})
+	respondWithJSON(w, http.StatusOK, LoginResponse{
+		Token:        accessToken,
+		RefreshToken: rawRefresh,
+		User:         user,
+	})
 }
