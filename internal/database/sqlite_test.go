@@ -777,6 +777,92 @@ func TestSQLiteStoreMFAAndSessions(t *testing.T) {
 	}
 }
 
+func TestUserMFAGovernanceStore(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_mfa_governance.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Create two users
+	u1 := &User{Username: "alice", Password: "pwd", Role: "admin"}
+	u2 := &User{Username: "bob", Password: "pwd", Role: "operator"}
+	if err := store.CreateUser(u1); err != nil {
+		t.Fatalf("CreateUser alice failed: %v", err)
+	}
+	if err := store.CreateUser(u2); err != nil {
+		t.Fatalf("CreateUser bob failed: %v", err)
+	}
+
+	alice, err := store.GetUser("alice")
+	if err != nil {
+		t.Fatalf("GetUser alice failed: %v", err)
+	}
+	bob, err := store.GetUser("bob")
+	if err != nil {
+		t.Fatalf("GetUser bob failed: %v", err)
+	}
+
+	if alice.MFAEnabled || bob.MFAEnabled {
+		t.Errorf("Expected both users to have MFAEnabled=false initially")
+	}
+
+	// 2. Enable MFA for Alice only
+	mfaAlice := &UserMFA{
+		UserID:      alice.ID,
+		Secret:      "JBSWY3DPEHPK3PXP",
+		BackupCodes: "[]",
+		Enabled:     true,
+	}
+	if err := store.UpsertUserMFA(mfaAlice); err != nil {
+		t.Fatalf("UpsertUserMFA alice failed: %v", err)
+	}
+
+	// 3. Test GetUser and GetUserByID reflect MFAEnabled accurately
+	aliceRefreshed, err := store.GetUser("alice")
+	if err != nil || !aliceRefreshed.MFAEnabled {
+		t.Errorf("Expected alice.MFAEnabled=true, got %v (err: %v)", aliceRefreshed.MFAEnabled, err)
+	}
+	aliceByID, err := store.GetUserByID(alice.ID)
+	if err != nil || !aliceByID.MFAEnabled {
+		t.Errorf("Expected aliceByID.MFAEnabled=true, got %v (err: %v)", aliceByID.MFAEnabled, err)
+	}
+
+	bobRefreshed, err := store.GetUser("bob")
+	if err != nil || bobRefreshed.MFAEnabled {
+		t.Errorf("Expected bob.MFAEnabled=false, got %v (err: %v)", bobRefreshed.MFAEnabled, err)
+	}
+
+	// 4. Test ListUsers returns correct per-user MFA statuses
+	list, err := store.ListUsers()
+	if err != nil {
+		t.Fatalf("ListUsers failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("Expected 2 users, got %d", len(list))
+	}
+	for _, u := range list {
+		if u.Username == "alice" && !u.MFAEnabled {
+			t.Errorf("ListUsers: expected alice.MFAEnabled=true")
+		}
+		if u.Username == "bob" && u.MFAEnabled {
+			t.Errorf("ListUsers: expected bob.MFAEnabled=false")
+		}
+	}
+
+	// 5. Test DeleteUserMFA resets Alice's MFA
+	if err := store.DeleteUserMFA(alice.ID); err != nil {
+		t.Fatalf("DeleteUserMFA alice failed: %v", err)
+	}
+	aliceAfterReset, _ := store.GetUser("alice")
+	if aliceAfterReset.MFAEnabled {
+		t.Errorf("Expected alice.MFAEnabled=false after DeleteUserMFA, got true")
+	}
+}
+
+
 
 
 

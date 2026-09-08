@@ -181,6 +181,7 @@
 - [x] **Task:** Implement dual-token session architecture: short-lived access JWT (15m) + rotated refresh tokens (7d) in HttpOnly strict cookies.
 - [x] **Task:** Expose REST endpoints: `POST /api/auth/login`, `POST /api/auth/2fa/verify-login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/2fa/status`, `POST /api/auth/2fa/setup`, `POST /api/auth/2fa/enable`, `POST /api/auth/2fa/disable`.
 - [x] **Task:** Implement Frontend 2FA challenge on Login page (`Login.tsx`) and 3-step setup wizard on Users page (`Users.tsx`) with real-time QR code rendering for authenticator apps, recovery code download/copy, and verification.
+- [x] **Task:** Multi-User 2FA Governance & Break-Glass Recovery: Expose per-user 2FA status in user queries (`mfa_enabled`), implement administrative 2FA reset endpoint (`POST /api/users/reset-2fa`) with session revocation, and update Users UI with per-user compliance badges and break-glass reset dialog.
 
 ### Milestone 5.3: Java Process Isolation Engine & System Hardening
 - [x] **Task:** Implement process isolation engine (`internal/minecraft/sandbox.go`) supporting `none`, `user`, and `bwrap` modes.

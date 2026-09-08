@@ -249,6 +249,7 @@ journalctl -u lodestone -f
 - `POST /api/auth/2fa/setup`: Generate a new 160-bit TOTP secret, `otpauth://` URI, and 8 single-use backup recovery codes.
 - `POST /api/auth/2fa/enable`: Confirm and activate 2FA with an initial 6-digit TOTP code.
 - `POST /api/auth/2fa/disable`: Deactivate 2FA using a valid code or account password.
+- `POST /api/users/reset-2fa`: Administratively reset 2FA for a user (erases secret, backup codes, and revokes active sessions).
 
 ## Project Status
 
