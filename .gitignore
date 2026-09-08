@@ -8,9 +8,11 @@ server.properties
 *.txt
 *.ods
 paper.db
-api_collection/PaperMC
+api_collection/
 web_legacy/
 papermc-manager
 dist/
 .deploy.env
 .deploy.conf
+bin/
+
