@@ -2,7 +2,10 @@ package api
 
 import (
 	"log"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -18,7 +21,34 @@ const (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // Non-browser / direct socket clients
+		}
+
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+
+		// Same host:port match
+		if strings.EqualFold(u.Host, r.Host) {
+			return true
+		}
+
+		// Allow local development proxies (e.g. Vite on localhost:5173 to backend on localhost:8080)
+		originHost := u.Hostname()
+		reqHost := r.Host
+		if h, _, err := net.SplitHostPort(r.Host); err == nil {
+			reqHost = h
+		}
+		if (originHost == "localhost" || originHost == "127.0.0.1") &&
+			(reqHost == "localhost" || reqHost == "127.0.0.1") {
+			return true
+		}
+
+		log.Printf("[WS Security] Rejected cross-origin connection attempt from: %s (Host: %s)", origin, r.Host)
+		return false
 	},
 }
 

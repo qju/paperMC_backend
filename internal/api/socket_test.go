@@ -125,3 +125,43 @@ func TestSocketHandlerIntegration(t *testing.T) {
 		t.Errorf("Expected broadcast data %q, got %q", hubMsg.Data, receivedBroadcast.Data)
 	}
 }
+
+func TestSocketHandler_OriginSecurity(t *testing.T) {
+	tempDir := t.TempDir()
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+
+	server := httptest.NewServer(http.HandlerFunc(handler.SocketHandler))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	// 1. Cross-origin from unauthorized external domain must be rejected
+	evilHeader := http.Header{}
+	evilHeader.Set("Origin", "http://evil-attacker.com")
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, evilHeader)
+	if err == nil {
+		t.Fatalf("Expected connection from evil.com to be rejected, but it succeeded")
+	}
+	if resp != nil && resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected 403 Forbidden for cross-origin attack, got %d", resp.StatusCode)
+	}
+
+	// 2. Authorized local origin (e.g. Vite frontend dev server) must succeed
+	localHeader := http.Header{}
+	localHeader.Set("Origin", "http://localhost:5173")
+	wsLocal, _, err := websocket.DefaultDialer.Dial(wsURL, localHeader)
+	if err != nil {
+		t.Fatalf("Expected connection from localhost dev origin to succeed, got error: %v", err)
+	}
+	wsLocal.Close()
+
+	// 3. Same origin must succeed
+	sameHeader := http.Header{}
+	sameHeader.Set("Origin", server.URL)
+	wsSame, _, err := websocket.DefaultDialer.Dial(wsURL, sameHeader)
+	if err != nil {
+		t.Fatalf("Expected same origin connection to succeed, got: %v", err)
+	}
+	wsSame.Close()
+}

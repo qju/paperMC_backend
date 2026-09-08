@@ -381,3 +381,35 @@ func TestSafeExtractZipInvalidFile(t *testing.T) {
 	}
 }
 
+func TestSafeExtractZip_SymlinkRejection(t *testing.T) {
+	workDir := t.TempDir()
+	symlinkZip := filepath.Join(workDir, "malicious_symlink.zip")
+
+	// Create a zip with a symlink header
+	f, err := os.Create(symlinkZip)
+	if err != nil {
+		t.Fatalf("Failed to create test zip: %v", err)
+	}
+	zw := zip.NewWriter(f)
+	hdr := &zip.FileHeader{
+		Name: "symlink_entry",
+	}
+	hdr.SetMode(os.ModeSymlink | 0777)
+	w, err := zw.CreateHeader(hdr)
+	if err != nil {
+		t.Fatalf("Failed to create header: %v", err)
+	}
+	_, _ = w.Write([]byte("../../../etc/passwd"))
+	_ = zw.Close()
+	_ = f.Close()
+
+	destDir := filepath.Join(workDir, "extracted")
+	err = SafeExtractZip(symlinkZip, destDir)
+	if err == nil {
+		t.Fatal("Expected SafeExtractZip to reject symlink entry, but succeeded")
+	}
+	if !strings.Contains(err.Error(), "symbolic links") {
+		t.Errorf("Expected error to mention symbolic links, got: %v", err)
+	}
+}
+

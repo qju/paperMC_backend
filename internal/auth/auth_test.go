@@ -68,7 +68,7 @@ func TestValidateToken_Expired(t *testing.T) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(jwtSecret)
+	tokenStr, err := token.SignedString(GetJWTSecret())
 	if err != nil {
 		t.Fatalf("Failed to sign test token: %v", err)
 	}
@@ -134,9 +134,9 @@ func TestGetSecret_CustomEnv(t *testing.T) {
 	_ = os.Setenv("JWT_SECRET", customKey)
 	defer os.Unsetenv("JWT_SECRET")
 
-	secret := getSecret()
+	secret := initSecret()
 	if string(secret) != customKey {
-		t.Fatalf("Expected getSecret() to return '%s', got '%s'", customKey, string(secret))
+		t.Fatalf("Expected initSecret() to return '%s', got '%s'", customKey, string(secret))
 	}
 }
 
@@ -271,4 +271,37 @@ func (c contextWithValueWrapper) Value(key any) any {
 func (c contextWithValueWrapper) Deadline() (deadline time.Time, ok bool) { return }
 func (c contextWithValueWrapper) Done() <-chan struct{}                   { return nil }
 func (c contextWithValueWrapper) Err() error                              { return nil }
+
+func TestJWTSecretManagement(t *testing.T) {
+	orig := GetJWTSecret()
+	defer SetJWTSecret(orig)
+
+	// Test Set and Get
+	custom := []byte("custom-32-byte-secret-key-123456")
+	SetJWTSecret(custom)
+	if string(GetJWTSecret()) != string(custom) {
+		t.Errorf("GetJWTSecret mismatch: expected %s, got %s", custom, GetJWTSecret())
+	}
+
+	// Test initSecret with custom env
+	_ = os.Setenv("JWT_SECRET", "super-secret-key-that-is-at-least-32-bytes-long!")
+	s1 := initSecret()
+	if string(s1) != "super-secret-key-that-is-at-least-32-bytes-long!" {
+		t.Errorf("Expected s1 to match env, got %s", s1)
+	}
+
+	// Test initSecret with short env (warning path)
+	_ = os.Setenv("JWT_SECRET", "short-key")
+	s2 := initSecret()
+	if string(s2) != "short-key" {
+		t.Errorf("Expected s2 to match short env, got %s", s2)
+	}
+
+	// Test initSecret empty env (random 32 byte fallback)
+	_ = os.Unsetenv("JWT_SECRET")
+	s3 := initSecret()
+	if len(s3) != 32 {
+		t.Errorf("Expected 32-byte random key, got len=%d", len(s3))
+	}
+}
 

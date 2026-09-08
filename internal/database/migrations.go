@@ -185,6 +185,40 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     7,
+		Description: "Add user_mfa and user_sessions tables for hardened authentication",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS user_mfa (
+				user_id INTEGER PRIMARY KEY,
+				secret TEXT NOT NULL,
+				backup_codes TEXT NOT NULL,
+				enabled INTEGER NOT NULL DEFAULT 0,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+			);
+
+			CREATE TABLE IF NOT EXISTS user_sessions (
+				id TEXT PRIMARY KEY,
+				user_id INTEGER NOT NULL,
+				refresh_token_hash TEXT NOT NULL,
+				user_agent TEXT DEFAULT '',
+				ip_address TEXT DEFAULT '',
+				expires_at DATETIME NOT NULL,
+				revoked INTEGER NOT NULL DEFAULT 0,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+			CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

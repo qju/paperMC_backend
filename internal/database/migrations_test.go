@@ -40,8 +40,8 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Errorf("Expected schema version %d after migrations, got %d", expectedVer, verAfter)
 	}
 
-	// Verify schedules, schedule_logs, server_flags, audit_logs, crash_reports, ai_settings, and profiler_reports tables exist
-	var schedCount, logCount, flagCount, auditCount, crashCount, aiCount, profilerCount int
+	// Verify schedules, schedule_logs, server_flags, audit_logs, crash_reports, ai_settings, profiler_reports, user_mfa, and user_sessions tables exist
+	var schedCount, logCount, flagCount, auditCount, crashCount, aiCount, profilerCount, mfaCount, sessCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules';").Scan(&schedCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedule_logs';").Scan(&logCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='server_flags';").Scan(&flagCount)
@@ -49,8 +49,10 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='crash_reports';").Scan(&crashCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ai_settings';").Scan(&aiCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='profiler_reports';").Scan(&profilerCount)
-	if schedCount != 1 || logCount != 1 || flagCount != 1 || auditCount != 1 || crashCount != 1 || aiCount != 1 || profilerCount != 1 {
-		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d, crash=%d, ai=%d, profiler=%d", schedCount, logCount, flagCount, auditCount, crashCount, aiCount, profilerCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_mfa';").Scan(&mfaCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_sessions';").Scan(&sessCount)
+	if schedCount != 1 || logCount != 1 || flagCount != 1 || auditCount != 1 || crashCount != 1 || aiCount != 1 || profilerCount != 1 || mfaCount != 1 || sessCount != 1 {
+		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d, crash=%d, ai=%d, profiler=%d, mfa=%d, sess=%d", schedCount, logCount, flagCount, auditCount, crashCount, aiCount, profilerCount, mfaCount, sessCount)
 	}
 
 	// Re-running migrations must be idempotent

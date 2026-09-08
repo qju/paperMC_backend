@@ -242,13 +242,13 @@ func TestAuditOperationsIntegration(t *testing.T) {
 		t.Fatalf("Expected 401 Unauthorized, got %d", w1.Code)
 	}
 
-	// 2. Failed login (user not found)
+	// 2. Failed login (user not found - anti-enumeration unified 401)
 	noUserBody := `{"username": "non_existent", "password": "secret"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(noUserBody))
 	w2 := httptest.NewRecorder()
 	handler.Login(w2, req2)
-	if w2.Code != http.StatusNotFound {
-		t.Fatalf("Expected 404 NotFound, got %d", w2.Code)
+	if w2.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 Unauthorized, got %d", w2.Code)
 	}
 
 	// 3. Successful login

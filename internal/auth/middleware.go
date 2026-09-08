@@ -23,7 +23,7 @@ func myKeyFunc(token *jwt.Token) (any, error) {
 	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 		return nil, jwt.ErrSignatureInvalid
 	}
-	return jwtSecret, nil
+	return GetJWTSecret(), nil
 }
 
 func ValidateToken(tokenString string) (*Claims, error) {
@@ -65,6 +65,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		claims, err := ValidateToken(tokenString)
 		if err != nil {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if claims.MFAPending {
+			http.Error(w, "Unauthorized: Multi-factor authentication required", http.StatusUnauthorized)
 			return
 		}
 

@@ -54,6 +54,18 @@ func (s *SQLiteStore) GetUser(username string) (*User, error) {
 	return &user, nil
 }
 
+func (s *SQLiteStore) GetUserByID(id int) (*User, error) {
+	SQL := `SELECT id, username, password, role FROM users WHERE id = ?`
+	row := s.db.QueryRow(SQL, id)
+
+	var user User
+	err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Role)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (s *SQLiteStore) ListUsers() ([]User, error) {
 	SQL := `SELECT id, username, role FROM users ORDER BY id ASC`
 	rows, err := s.db.Query(SQL)
@@ -643,6 +655,128 @@ func (s *SQLiteStore) DeleteProfilerReport(id int) error {
 
 func (s *SQLiteStore) ClearProfilerReports() error {
 	_, err := s.db.Exec("DELETE FROM profiler_reports")
+	return err
+}
+
+// GetUserMFA retrieves MFA settings for a user.
+func (s *SQLiteStore) GetUserMFA(userID int) (*UserMFA, error) {
+	query := `SELECT user_id, secret, backup_codes, enabled, created_at, updated_at FROM user_mfa WHERE user_id = ?`
+	var mfa UserMFA
+	var enabledInt int
+	var createdStr, updatedStr string
+	err := s.db.QueryRow(query, userID).Scan(&mfa.UserID, &mfa.Secret, &mfa.BackupCodes, &enabledInt, &createdStr, &updatedStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	mfa.Enabled = enabledInt == 1
+	mfa.CreatedAt = parseSQLiteTime(createdStr)
+	mfa.UpdatedAt = parseSQLiteTime(updatedStr)
+	return &mfa, nil
+}
+
+// UpsertUserMFA inserts or updates MFA settings for a user.
+func (s *SQLiteStore) UpsertUserMFA(mfa *UserMFA) error {
+	query := `INSERT INTO user_mfa (user_id, secret, backup_codes, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id) DO UPDATE SET
+			secret = excluded.secret,
+			backup_codes = excluded.backup_codes,
+			enabled = excluded.enabled,
+			updated_at = CURRENT_TIMESTAMP`
+	enabledInt := 0
+	if mfa.Enabled {
+		enabledInt = 1
+	}
+	_, err := s.db.Exec(query, mfa.UserID, mfa.Secret, mfa.BackupCodes, enabledInt)
+	return err
+}
+
+// DeleteUserMFA removes MFA settings for a user.
+func (s *SQLiteStore) DeleteUserMFA(userID int) error {
+	_, err := s.db.Exec("DELETE FROM user_mfa WHERE user_id = ?", userID)
+	return err
+}
+
+// CreateSession registers a new active user session.
+func (s *SQLiteStore) CreateSession(session *UserSession) error {
+	query := `INSERT INTO user_sessions (id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+	revokedInt := 0
+	if session.Revoked {
+		revokedInt = 1
+	}
+	_, err := s.db.Exec(query, session.ID, session.UserID, session.RefreshTokenHash, session.UserAgent, session.IPAddress, session.ExpiresAt.UTC().Format("2006-01-02 15:04:05"), revokedInt)
+	return err
+}
+
+// GetSession retrieves a session by its ID.
+func (s *SQLiteStore) GetSession(sessionID string) (*UserSession, error) {
+	query := `SELECT id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked, created_at
+		FROM user_sessions WHERE id = ?`
+	var sess UserSession
+	var revokedInt int
+	var expiresStr, createdStr string
+	err := s.db.QueryRow(query, sessionID).Scan(&sess.ID, &sess.UserID, &sess.RefreshTokenHash, &sess.UserAgent, &sess.IPAddress, &expiresStr, &revokedInt, &createdStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sess.Revoked = revokedInt == 1
+	sess.ExpiresAt = parseSQLiteTime(expiresStr)
+	sess.CreatedAt = parseSQLiteTime(createdStr)
+	return &sess, nil
+}
+
+// GetSessionByTokenHash retrieves an active or revoked session by the hash of its refresh token.
+func (s *SQLiteStore) GetSessionByTokenHash(tokenHash string) (*UserSession, error) {
+	query := `SELECT id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked, created_at
+		FROM user_sessions WHERE refresh_token_hash = ?`
+	var sess UserSession
+	var revokedInt int
+	var expiresStr, createdStr string
+	err := s.db.QueryRow(query, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.RefreshTokenHash, &sess.UserAgent, &sess.IPAddress, &expiresStr, &revokedInt, &createdStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sess.Revoked = revokedInt == 1
+	sess.ExpiresAt = parseSQLiteTime(expiresStr)
+	sess.CreatedAt = parseSQLiteTime(createdStr)
+	return &sess, nil
+}
+
+// UpdateSessionTokenHash rotates the refresh token hash and updates expiry.
+func (s *SQLiteStore) UpdateSessionTokenHash(sessionID string, newHash string, newExpiresAt time.Time) error {
+	query := `UPDATE user_sessions SET refresh_token_hash = ?, expires_at = ? WHERE id = ?`
+	_, err := s.db.Exec(query, newHash, newExpiresAt.UTC().Format("2006-01-02 15:04:05"), sessionID)
+	return err
+}
+
+// RevokeSession marks an individual session as revoked.
+func (s *SQLiteStore) RevokeSession(sessionID string) error {
+	query := `UPDATE user_sessions SET revoked = 1 WHERE id = ?`
+	_, err := s.db.Exec(query, sessionID)
+	return err
+}
+
+// RevokeUserSessions marks all sessions for a user as revoked (e.g. on password change or logout all).
+func (s *SQLiteStore) RevokeUserSessions(userID int) error {
+	query := `UPDATE user_sessions SET revoked = 1 WHERE user_id = ?`
+	_, err := s.db.Exec(query, userID)
+	return err
+}
+
+// CleanExpiredSessions deletes sessions that have expired or were revoked older than 30 days.
+func (s *SQLiteStore) CleanExpiredSessions() error {
+	query := `DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP OR (revoked = 1 AND created_at < datetime('now', '-30 days'))`
+	_, err := s.db.Exec(query)
 	return err
 }
 

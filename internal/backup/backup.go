@@ -413,6 +413,11 @@ func SafeExtractZip(zipPath, destDir string) error {
 			return fmt.Errorf("illegal file path in zip archive: %s", file.Name)
 		}
 
+		// Reject symbolic links to prevent symlink traversal attacks
+		if file.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symbolic links in zip archives are prohibited: %s", file.Name)
+		}
+
 		if file.FileInfo().IsDir() {
 			if err := os.MkdirAll(filePath, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", filePath, err)

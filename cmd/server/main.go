@@ -28,6 +28,15 @@ func main() {
 	}
 	defer store.Close()
 	mcServer := minecraft.NewServer(cfg.WorkDir, cfg.JarFile, cfg.RAM, store)
+	if cfg.IsolationMode != "" && cfg.IsolationMode != "none" {
+		isoCfg := minecraft.DefaultIsolationConfig()
+		isoCfg.Mode = minecraft.IsolationMode(cfg.IsolationMode)
+		if cfg.MinecraftUser != "" {
+			isoCfg.MinecraftUser = cfg.MinecraftUser
+		}
+		mcServer.SetIsolationConfig(isoCfg)
+		log.Printf("[Security] Java process isolation active: mode=%s", cfg.IsolationMode)
+	}
 
 	// --- BOOTSTRAP ADMIN USER ----
 	if cfg.AdminPass != "" {
@@ -77,6 +86,10 @@ func main() {
 
 	// Public Routes
 	mux.HandleFunc("POST /login", mcHandler.Login)
+	mux.HandleFunc("POST /api/auth/login", mcHandler.Login)
+	mux.HandleFunc("POST /api/auth/2fa/verify-login", mcHandler.Handle2FAVerifyLogin)
+	mux.HandleFunc("POST /api/auth/refresh", mcHandler.HandleRefreshToken)
+	mux.HandleFunc("POST /api/auth/logout", mcHandler.HandleLogout)
 
 	// Protected Routes in a Map
 	// Key = Path, Value = Handler Function
@@ -129,6 +142,12 @@ func main() {
 		"POST /api/users":         mcHandler.HandleCreateUser,
 		"PUT /api/users/password": mcHandler.HandleUpdatePassword,
 		"DELETE /api/users":       mcHandler.HandleDeleteUser,
+
+		// Two-Factor Authentication (2FA)
+		"GET /api/auth/2fa/status":   mcHandler.Handle2FAStatus,
+		"POST /api/auth/2fa/setup":   mcHandler.Handle2FASetup,
+		"POST /api/auth/2fa/enable":  mcHandler.Handle2FAEnable,
+		"POST /api/auth/2fa/disable": mcHandler.Handle2FADisable,
 
 		// Backups
 		"GET /api/backups":          mcHandler.HandleGetBackups,
