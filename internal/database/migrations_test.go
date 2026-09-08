@@ -40,13 +40,14 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Errorf("Expected schema version %d after migrations, got %d", expectedVer, verAfter)
 	}
 
-	// Verify schedules, schedule_logs, and server_flags tables exist
-	var schedCount, logCount, flagCount int
+	// Verify schedules, schedule_logs, server_flags, and audit_logs tables exist
+	var schedCount, logCount, flagCount, auditCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules';").Scan(&schedCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedule_logs';").Scan(&logCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='server_flags';").Scan(&flagCount)
-	if schedCount != 1 || logCount != 1 || flagCount != 1 {
-		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d", schedCount, logCount, flagCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='audit_logs';").Scan(&auditCount)
+	if schedCount != 1 || logCount != 1 || flagCount != 1 || auditCount != 1 {
+		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d", schedCount, logCount, flagCount, auditCount)
 	}
 
 	// Re-running migrations must be idempotent

@@ -216,3 +216,59 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 	})
 }
+
+func TestGetClaimsAndUsername(t *testing.T) {
+	// Request without claims
+	emptyReq := httptest.NewRequest("GET", "/test", nil)
+	if claims := GetClaims(emptyReq); claims != nil {
+		t.Errorf("Expected nil claims, got %+v", claims)
+	}
+	if user := GetUsername(emptyReq); user != "" {
+		t.Errorf("Expected empty username, got '%s'", user)
+	}
+
+	// Request with valid claims
+	tokenStr, err := GenerateToken("audit_tester", "admin")
+	if err != nil {
+		t.Fatalf("GenerateToken failed: %v", err)
+	}
+	claims, err := ValidateToken(tokenStr)
+	if err != nil {
+		t.Fatalf("ValidateToken failed: %v", err)
+	}
+
+	reqWithClaims := httptest.NewRequest("GET", "/test", nil)
+	ctx := reqWithClaims.Context()
+	ctx = contextWithValue(ctx, UserKey, claims)
+	reqWithClaims = reqWithClaims.WithContext(ctx)
+
+	extracted := GetClaims(reqWithClaims)
+	if extracted == nil || extracted.Username != "audit_tester" {
+		t.Errorf("Expected claims for 'audit_tester', got %+v", extracted)
+	}
+	if user := GetUsername(reqWithClaims); user != "audit_tester" {
+		t.Errorf("Expected username 'audit_tester', got '%s'", user)
+	}
+}
+
+func contextWithValue(ctx interface{ Value(key any) any }, key any, val any) contextWithValueWrapper {
+	return contextWithValueWrapper{ctx: ctx, key: key, val: val}
+}
+
+type contextWithValueWrapper struct {
+	ctx interface{ Value(key any) any }
+	key any
+	val any
+}
+
+func (c contextWithValueWrapper) Value(key any) any {
+	if key == c.key {
+		return c.val
+	}
+	return c.ctx.Value(key)
+}
+
+func (c contextWithValueWrapper) Deadline() (deadline time.Time, ok bool) { return }
+func (c contextWithValueWrapper) Done() <-chan struct{}                   { return nil }
+func (c contextWithValueWrapper) Err() error                              { return nil }
+

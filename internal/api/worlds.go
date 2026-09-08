@@ -62,10 +62,10 @@ func (h *Handler) HandleSetActiveWorld(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
-	h.applySetActiveWorld(w, req)
+	h.applySetActiveWorld(w, r, req)
 }
 
-func (h *Handler) applySetActiveWorld(w http.ResponseWriter, req SetActiveWorldRequest) {
+func (h *Handler) applySetActiveWorld(w http.ResponseWriter, r *http.Request, req SetActiveWorldRequest) {
 	newWorld := strings.TrimSpace(req.WorldName)
 	if newWorld == "" {
 		respondWithError(w, http.StatusBadRequest, "World name cannot be empty")
@@ -81,9 +81,20 @@ func (h *Handler) applySetActiveWorld(w http.ResponseWriter, req SetActiveWorldR
 	}
 
 	if err := config.SaveProperties(h.mc.WorkDir, changes); err != nil {
+		action := "world.switch"
+		if strings.Contains(r.URL.Path, "create") {
+			action = "world.create"
+		}
+		h.recordAudit(r, action, http.StatusInternalServerError, "Failed to update configuration: "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to update configuration: "+err.Error())
 		return
 	}
+
+	action := "world.switch"
+	if strings.Contains(r.URL.Path, "create") {
+		action = "world.create"
+	}
+	h.recordAudit(r, action, http.StatusOK, "Active world set to "+newWorld)
 
 	// Synchronized restart if server is running
 	status := h.mc.GetStatus()
@@ -143,10 +154,12 @@ func (h *Handler) HandleDuplicateWorld(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := minecraft.DuplicateWorld(h.mc.WorkDir, source, target); err != nil {
+		h.recordAudit(r, "world.duplicate", http.StatusBadRequest, "Failed cloning "+source+" to "+target+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	h.recordAudit(r, "world.duplicate", http.StatusOK, "Cloned world "+source+" to "+target)
 	newWorldInfo, err := minecraft.InspectWorld(h.mc.WorkDir, target, false)
 	if err != nil {
 		respondWithJSON(w, http.StatusOK, map[string]string{"status": "World cloned successfully", "target_world": target})
@@ -175,10 +188,12 @@ func (h *Handler) HandleDeleteWorld(w http.ResponseWriter, r *http.Request) {
 
 	activeWorld := h.getActiveWorld()
 	if err := minecraft.DeleteWorld(h.mc.WorkDir, worldName, activeWorld); err != nil {
+		h.recordAudit(r, "world.delete", http.StatusBadRequest, "Failed to delete "+worldName+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	h.recordAudit(r, "world.delete", http.StatusOK, "Deleted world "+worldName)
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":     "World deleted",
 		"world_name": worldName,
@@ -203,6 +218,6 @@ func (h *Handler) HandleCreateWorld(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// World creation in Paper is achieved by setting level-name and booting
-	h.applySetActiveWorld(w, req)
+	h.applySetActiveWorld(w, r, req)
 }
 

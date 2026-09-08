@@ -172,9 +172,11 @@ func (h *Handler) WhiteListing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.mc.WhiteListUser(req.Command); err != nil {
+		h.recordAudit(r, "player.whitelist_add", http.StatusBadRequest, "Failed to whitelist "+req.Command+": "+err.Error())
 		http.Error(w, "Error sending Command", http.StatusBadRequest)
 		return
 	}
+	h.recordAudit(r, "player.whitelist_add", http.StatusOK, "Whitelisted player "+req.Command)
 	response := StatusResponse{Status: "200 OK JSON"}
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -193,9 +195,11 @@ func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.mc.SendCommand(req.Command); err != nil {
+		h.recordAudit(r, "server.command", http.StatusBadRequest, "Failed command '"+req.Command+"': "+err.Error())
 		http.Error(w, "Error sending Command", http.StatusBadRequest)
 		return
 	}
+	h.recordAudit(r, "server.command", http.StatusOK, req.Command)
 	response := StatusResponse{Status: "200 OK JSON"}
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -206,12 +210,15 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Differentiate between State conflicts (400) and OS errors (500)
 		if strings.Contains(err.Error(), "Status is not") {
+			h.recordAudit(r, "server.start", http.StatusBadRequest, err.Error())
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		h.recordAudit(r, "server.start", http.StatusInternalServerError, err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to start server: "+err.Error())
 		return
 	}
+	h.recordAudit(r, "server.start", http.StatusOK, "Server started")
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server started"})
 }
 
@@ -219,12 +226,15 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 	err := h.mc.Stop()
 	if err != nil {
 		if strings.Contains(err.Error(), "not running") {
+			h.recordAudit(r, "server.stop", http.StatusBadRequest, err.Error())
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		h.recordAudit(r, "server.stop", http.StatusInternalServerError, err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to stop server: "+err.Error())
 		return
 	}
+	h.recordAudit(r, "server.stop", http.StatusOK, "Server stopped gracefully")
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server stopped"})
 }
 
@@ -232,12 +242,15 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 	err := h.mc.Kill()
 	if err != nil {
 		if strings.Contains(err.Error(), "already stopped") {
+			h.recordAudit(r, "server.kill", http.StatusBadRequest, err.Error())
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		h.recordAudit(r, "server.kill", http.StatusInternalServerError, err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to Kill the server: "+err.Error())
 		return
 	}
+	h.recordAudit(r, "server.kill", http.StatusOK, "Server killed forcefully")
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Server Killed"})
 }
 
@@ -290,9 +303,11 @@ func (h *Handler) PostConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := config.SaveProperties(h.mc.WorkDir, data); err != nil {
+		h.recordAudit(r, "config.save", http.StatusBadRequest, err.Error())
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.recordAudit(r, "config.save", http.StatusOK, "Updated server.properties")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(StatusResponse{Status: "Config Saved"})
 }
@@ -459,6 +474,7 @@ func (h *Handler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.mc.Broadcast(fmt.Sprintf("[System] PaperMC updated to %s (Build %d)", buildInfo.Version, buildInfo.BuildID))
+	h.recordAudit(r, "updater.apply", http.StatusOK, fmt.Sprintf("Updated PaperMC to %s (Build %d)", buildInfo.Version, buildInfo.BuildID))
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "updated",
 		"version":  buildInfo.Version,

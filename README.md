@@ -19,6 +19,7 @@
 - **Automated Task Scheduler & Execution Audit Logs:** Background cron engine (`robfig/cron/v3`) for automated world backups, scheduled server restarts with countdown notifications, maintenance commands, and chat broadcasts, backed by a persistent execution audit log tracking run statuses, durations in milliseconds, and error details.
 - **Plugin Manager & Geyser Bedrock Bridge:** Comprehensive Paper/Spigot plugin control with pure-Go ZIP manifest extraction, enable/disable toggle without file deletion, custom `.jar` upload, and Modrinth v2 marketplace search. Includes a dedicated GeyserMC & Floodgate hub with Bedrock client version compatibility tracking and one-click upstream updates.
 - **Smart Flags & JVM Optimizer:** Dynamic Aikar's G1GC flag tuning based on configured heap RAM (automatically adjusting Young Generation boundaries and reserve thresholds for `<12GB` vs `≥12GB`), presets (`aikar`, `minimal`, `none`, `custom`), active Java arguments tracking, and restart synchronization detection.
+- **Administrative Action Audit Logs:** Immutable chronological audit trail recording operator identity, client IP addresses (resolving `X-Forwarded-For` and `X-Real-IP`), HTTP methods, endpoints, response status codes, and operational context for all server lifecycle events, configuration adjustments, player moderation, backups, plugins, and scheduled tasks.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -210,6 +211,10 @@ journalctl -u lodestone -f
 - `POST /api/flags`: Save JVM settings (`{"ram": "8G", "preset": "aikar", "custom_flags": "..."}`).
 - `GET /api/flags/presets?ram=...`: Retrieve available optimization presets (`aikar`, `minimal`, `none`, `custom`) and sample flags for the given RAM allocation.
 
+### Administrative Action Audit Log Endpoints
+- `GET /api/audit?page=...&limit=...&action=...&username=...`: Paginated retrieval of administrative action records with category filtering.
+- `DELETE /api/audit`: Purge historical audit log entries.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -225,6 +230,7 @@ journalctl -u lodestone -f
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
 - [x] Milestone 3.1: Smart Flags & Aikar's JVM Optimizer
 - [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
+- [x] Milestone 3.3: Administrative Action Audit Logs
 
 
 ## License

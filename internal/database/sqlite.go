@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -350,3 +351,91 @@ func (s *SQLiteStore) SaveServerFlags(flags *ServerFlags) error {
 	_, err := s.db.Exec(query, flags.RAM, flags.Preset, flags.CustomFlags)
 	return err
 }
+
+// --- Audit Logging ---
+
+func (s *SQLiteStore) RecordAuditLog(entry *AuditLog) error {
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now()
+	}
+	query := `INSERT INTO audit_logs (username, action, endpoint, method, details, ip_address, status_code, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	res, err := s.db.Exec(query, entry.Username, entry.Action, entry.Endpoint, entry.Method, entry.Details, entry.IPAddress, entry.StatusCode, entry.CreatedAt.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		entry.ID = int(id)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListAuditLogs(limit, offset int, actionFilter, userFilter string) ([]AuditLog, int, error) {
+	var conditions []string
+	var args []interface{}
+
+	if strings.TrimSpace(actionFilter) != "" {
+		act := strings.TrimSpace(actionFilter)
+		if strings.Contains(act, "%") {
+			conditions = append(conditions, "action LIKE ?")
+			args = append(args, act)
+		} else {
+			conditions = append(conditions, "(action = ? OR action LIKE ?)")
+			args = append(args, act, act+".%")
+		}
+	}
+
+	if strings.TrimSpace(userFilter) != "" {
+		usr := strings.TrimSpace(userFilter)
+		conditions = append(conditions, "username LIKE ?")
+		args = append(args, "%"+usr+"%")
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	countSQL := "SELECT COUNT(*) FROM audit_logs" + whereClause
+	var total int
+	if err := s.db.QueryRow(countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	dataSQL := "SELECT id, username, action, endpoint, method, details, ip_address, status_code, created_at FROM audit_logs" +
+		whereClause + " ORDER BY id DESC LIMIT ? OFFSET ?"
+	dataArgs := append(args, limit, offset)
+
+	rows, err := s.db.Query(dataSQL, dataArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	logs := []AuditLog{}
+	for rows.Next() {
+		var l AuditLog
+		var createdStr string
+		if err := rows.Scan(&l.ID, &l.Username, &l.Action, &l.Endpoint, &l.Method, &l.Details, &l.IPAddress, &l.StatusCode, &createdStr); err != nil {
+			continue
+		}
+		l.CreatedAt = parseSQLiteTime(createdStr)
+		logs = append(logs, l)
+	}
+
+	return logs, total, nil
+}
+
+func (s *SQLiteStore) ClearAuditLogs() error {
+	_, err := s.db.Exec("DELETE FROM audit_logs")
+	return err
+}
+

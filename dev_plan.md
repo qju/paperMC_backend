@@ -111,7 +111,13 @@
 - [x] **Task:** Build comprehensive unit tests maintaining $\ge 80\%$ test coverage.
 
 ### Milestone 3.3: Observability
-- [ ] **Task:** **Audit Logs:** Log every API action to DB (Who did what, when).
+- [x] **Task:** **Audit Logs:** Log every administrative API action to SQLite DB (Who did what, when, IP address, and status):
+  - Database migration v4 (`audit_logs` table) tracking ID, username, action, endpoint, method, details, client IP address, status code, and timestamp with indexes.
+  - Store interface methods (`RecordAuditLog`, `ListAuditLogs` with pagination and action/user filters, `ClearAuditLogs`).
+  - REST endpoints (`GET /api/audit`, `DELETE /api/audit`) and centralized audit helper with client IP extraction (`X-Forwarded-For`, `X-Real-IP`, `RemoteAddr`).
+  - Action auditing hooks integrated into authentication, server lifecycle (start/stop/kill/command), player moderation, world management, configuration, flags tuning, backups, plugins, schedules, and updater.
+  - Responsive dark glassmorphic React dashboard (`web/src/pages/AuditLogs.tsx`) with category filters, live search, relative time badges, status code indicators, pagination, and history purge modal.
+  - Comprehensive unit test coverage with all packages maintaining $\ge 80\%$ test coverage.
 - [ ] **Task:** **Crash Analyst:** Basic heuristic analysis of stack traces.
 
 ---

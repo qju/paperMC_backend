@@ -64,10 +64,12 @@ func (h *Handler) HandleTogglePlugin(w http.ResponseWriter, r *http.Request) {
 	pluginsDir := h.getPluginsDir()
 	newFilename, err := plugins.TogglePlugin(pluginsDir, filename)
 	if err != nil {
+		h.recordAudit(r, "plugin.toggle", http.StatusBadRequest, "Failed toggling "+filename+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Failed to toggle plugin: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "plugin.toggle", http.StatusOK, "Toggled plugin "+filename+" -> "+newFilename)
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":       "success",
 		"old_filename": filename,
@@ -93,10 +95,12 @@ func (h *Handler) HandleDeletePlugin(w http.ResponseWriter, r *http.Request) {
 
 	pluginsDir := h.getPluginsDir()
 	if err := plugins.DeletePlugin(pluginsDir, filename); err != nil {
+		h.recordAudit(r, "plugin.delete", http.StatusBadRequest, "Failed deleting "+filename+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Failed to delete plugin: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "plugin.delete", http.StatusOK, "Deleted plugin "+filename)
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "Plugin deleted successfully",
 		"filename": filename,
@@ -121,10 +125,12 @@ func (h *Handler) HandleUploadPlugin(w http.ResponseWriter, r *http.Request) {
 	pluginsDir := h.getPluginsDir()
 	info, err := plugins.SaveUploadedPlugin(pluginsDir, header.Filename, file)
 	if err != nil {
+		h.recordAudit(r, "plugin.upload", http.StatusBadRequest, "Failed uploading "+header.Filename+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Plugin validation or installation failed: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "plugin.upload", http.StatusCreated, "Uploaded plugin "+header.Filename)
 	respondWithJSON(w, http.StatusCreated, info)
 }
 
@@ -166,10 +172,12 @@ func (h *Handler) HandleUpdateGeyser(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := client.UpdateBedrockBridge(pluginsDir, req.Target)
 	if err != nil {
+		h.recordAudit(r, "plugin.geyser_update", http.StatusInternalServerError, "Failed updating Bedrock Bridge ("+req.Target+"): "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to update Bedrock Bridge: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "plugin.geyser_update", http.StatusOK, "Updated Bedrock Bridge ("+req.Target+")")
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":  "Bedrock bridge update completed successfully",
 		"updated": updated,
@@ -221,9 +229,11 @@ func (h *Handler) HandleInstallMarketPlugin(w http.ResponseWriter, r *http.Reque
 
 	info, err := client.InstallPlugin(pluginsDir, projectID, req.VersionID)
 	if err != nil {
+		h.recordAudit(r, "plugin.market_install", http.StatusInternalServerError, "Failed installing plugin "+projectID+": "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to install plugin from marketplace: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "plugin.market_install", http.StatusCreated, "Installed plugin '"+info.Name+"' ("+projectID+")")
 	respondWithJSON(w, http.StatusCreated, info)
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -110,9 +111,12 @@ func (h *Handler) HandleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.CreateSchedule(&sched); err != nil {
+		h.recordAudit(r, "schedule.create", http.StatusInternalServerError, "Failed creating schedule '"+sched.Name+"': "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to create schedule: "+err.Error())
 		return
 	}
+
+	h.recordAudit(r, "schedule.create", http.StatusCreated, "Created schedule '"+sched.Name+"' ("+sched.ActionType+")")
 
 	if h.scheduler != nil && sched.IsEnabled {
 		_ = h.scheduler.RegisterSchedule(sched)
@@ -167,9 +171,12 @@ func (h *Handler) HandleUpdateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.UpdateSchedule(&sched); err != nil {
+		h.recordAudit(r, "schedule.update", http.StatusInternalServerError, fmt.Sprintf("Failed updating schedule ID %d: %s", sched.ID, err.Error()))
 		respondWithError(w, http.StatusInternalServerError, "Failed to update schedule: "+err.Error())
 		return
 	}
+
+	h.recordAudit(r, "schedule.update", http.StatusOK, fmt.Sprintf("Updated schedule '%s' (ID %d)", sched.Name, sched.ID))
 
 	if h.scheduler != nil {
 		if sched.IsEnabled {
@@ -203,9 +210,12 @@ func (h *Handler) HandleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 
 	newStatus := !sched.IsEnabled
 	if err := h.store.ToggleSchedule(id, newStatus); err != nil {
+		h.recordAudit(r, "schedule.toggle", http.StatusInternalServerError, fmt.Sprintf("Failed toggling schedule ID %d: %s", id, err.Error()))
 		respondWithError(w, http.StatusInternalServerError, "Failed to toggle schedule: "+err.Error())
 		return
 	}
+
+	h.recordAudit(r, "schedule.toggle", http.StatusOK, fmt.Sprintf("Toggled schedule '%s' (ID %d) to enabled=%t", sched.Name, id, newStatus))
 
 	sched.IsEnabled = newStatus
 	if h.scheduler != nil {
@@ -240,10 +250,12 @@ func (h *Handler) HandleRunSchedule(w http.ResponseWriter, r *http.Request) {
 
 	err := h.scheduler.ExecuteJob(id)
 	if err != nil {
+		h.recordAudit(r, "schedule.run_now", http.StatusInternalServerError, fmt.Sprintf("Failed running schedule ID %d: %s", id, err.Error()))
 		respondWithError(w, http.StatusInternalServerError, "Task execution failed: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "schedule.run_now", http.StatusOK, fmt.Sprintf("Triggered run for schedule ID %d", id))
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":      "Task executed successfully",
 		"schedule_id": id,
@@ -267,10 +279,12 @@ func (h *Handler) HandleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.DeleteSchedule(id); err != nil {
+		h.recordAudit(r, "schedule.delete", http.StatusInternalServerError, fmt.Sprintf("Failed deleting schedule ID %d: %s", id, err.Error()))
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete schedule: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "schedule.delete", http.StatusOK, fmt.Sprintf("Deleted schedule ID %d", id))
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":      "Schedule deleted",
 		"schedule_id": id,
@@ -313,10 +327,12 @@ func (h *Handler) HandleClearScheduleLogs(w http.ResponseWriter, r *http.Request
 	schedID, _ := strconv.Atoi(schedIDStr)
 
 	if err := h.store.ClearScheduleLogs(schedID); err != nil {
+		h.recordAudit(r, "schedule.logs_clear", http.StatusInternalServerError, fmt.Sprintf("Failed clearing logs for schedule ID %d: %s", schedID, err.Error()))
 		respondWithError(w, http.StatusInternalServerError, "Failed to clear schedule logs: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "schedule.logs_clear", http.StatusOK, fmt.Sprintf("Cleared logs for schedule ID %d", schedID))
 	respondWithJSON(w, http.StatusOK, map[string]string{
 		"status": "Schedule logs cleared successfully",
 	})

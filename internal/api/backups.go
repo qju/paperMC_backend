@@ -49,10 +49,12 @@ func (h *Handler) HandleCreateBackup(w http.ResponseWriter, r *http.Request) {
 
 	info, err := backup.CreateBackup(h.mc.WorkDir, req, h.mc)
 	if err != nil {
+		h.recordAudit(r, "backup.create", http.StatusBadRequest, "Failed creating "+req.Type+" backup: "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Failed to create backup: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "backup.create", http.StatusCreated, "Created "+req.Type+" backup '"+info.Filename+"'")
 	respondWithJSON(w, http.StatusCreated, info)
 }
 
@@ -88,10 +90,12 @@ func (h *Handler) HandleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := backup.RestoreBackup(h.mc.WorkDir, filename, h.mc); err != nil {
+		h.recordAudit(r, "backup.restore", http.StatusBadRequest, "Failed restoring "+filename+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Failed to restore backup: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "backup.restore", http.StatusOK, "Restored backup '"+filename+"'")
 	respondWithJSON(w, http.StatusOK, map[string]string{
 		"status":  "Backup restored successfully",
 		"archive": filename,
@@ -114,10 +118,12 @@ func (h *Handler) HandleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := backup.DeleteBackup(h.mc.WorkDir, filename); err != nil {
+		h.recordAudit(r, "backup.delete", http.StatusBadRequest, "Failed deleting "+filename+": "+err.Error())
 		respondWithError(w, http.StatusBadRequest, "Failed to delete backup: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "backup.delete", http.StatusOK, "Deleted backup '"+filename+"'")
 	respondWithJSON(w, http.StatusOK, map[string]string{
 		"status":  "Backup deleted successfully",
 		"archive": filename,
