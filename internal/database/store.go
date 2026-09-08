@@ -105,6 +105,13 @@ type Store interface {
 	ClearCrashReports() error
 	GetAISettings() (*AISettings, error)
 	SaveAISettings(settings *AISettings) error
+
+	// Performance Profiler Reports
+	RecordProfilerReport(report *ProfilerReport) error
+	ListProfilerReports(limit, offset int, reportType string) ([]ProfilerReport, int, error)
+	GetProfilerReport(id int) (*ProfilerReport, error)
+	DeleteProfilerReport(id int) error
+	ClearProfilerReports() error
 }
 
 type CrashReport struct {
@@ -127,4 +134,20 @@ type AISettings struct {
 	IsEnabled bool      `json:"is_enabled"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type ProfilerReport struct {
+	ID          int       `json:"id"`
+	ReportType  string    `json:"report_type"` // "spark_profile", "spark_health", "timings"
+	Title       string    `json:"title"`
+	URL         string    `json:"url,omitempty"`
+	TPS         string    `json:"tps,omitempty"`
+	MSPT        string    `json:"mspt,omitempty"`
+	CPUUsage    string    `json:"cpu_usage,omitempty"`
+	MemoryUsage string    `json:"memory_usage,omitempty"`
+	GCMetrics   string    `json:"gc_metrics,omitempty"`
+	Summary     string    `json:"summary"`
+	RawOutput   string    `json:"raw_output"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 

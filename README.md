@@ -20,6 +20,7 @@
 - **Plugin Manager & Geyser Bedrock Bridge:** Comprehensive Paper/Spigot plugin control with pure-Go ZIP manifest extraction, enable/disable toggle without file deletion, custom `.jar` upload, and Modrinth v2 marketplace search. Includes a dedicated GeyserMC & Floodgate hub with Bedrock client version compatibility tracking and one-click upstream updates.
 - **Smart Flags & JVM Optimizer:** Dynamic Aikar's G1GC flag tuning based on configured heap RAM (automatically adjusting Young Generation boundaries and reserve thresholds for `<12GB` vs `≥12GB`), presets (`aikar`, `minimal`, `none`, `custom`), active Java arguments tracking, and restart synchronization detection.
 - **Administrative Action Audit Logs:** Immutable chronological audit trail recording operator identity, client IP addresses (resolving `X-Forwarded-For` and `X-Real-IP`), HTTP methods, endpoints, response status codes, and operational context for all server lifecycle events, configuration adjustments, player moderation, backups, plugins, and scheduled tasks.
+- **Performance Profiler & Spark / Timings Engine:** Automated console log interception and database archiving of Spark (`spark.lucko.me`) and Paper Timings (`timings.aikar.co`, `timings.papermc.io`) reports, real-time WebSocket link broadcasts (`profiler_event`), interactive profiler command execution (`/spark sampler`, `/spark health`, `/timings paste`), multi-metric health telemetry parsing (TPS, MSPT, CPU, Memory Heap, GC Activity, Disk), and automated JVM/server tuning recommendations.
 - **Embedded SPA UI:** Modern dark glassmorphic React + TypeScript dashboard embedded via `go:embed`.
 
 
@@ -224,6 +225,13 @@ journalctl -u lodestone -f
 - `POST /api/crash/ai-config`: Save AI diagnostic configuration (supporting OpenAI, Gemini, Ollama, Groq, DeepSeek).
 - `POST /api/crash/ai-explain`: Request deep external LLM diagnostic consultation with automated sensitive log sanitization.
 
+### Performance Profiler & Timings / Spark Engine Endpoints
+- `GET /api/profiler/reports?limit=...&offset=...&type=...`: Retrieve recorded Spark and Timings profiler reports with pagination and type filtering.
+- `GET /api/profiler/reports/{id}`: Fetch single report by ID.
+- `DELETE /api/profiler/reports?id=...`: Delete individual report or purge all recorded profiler reports (`?id=all`).
+- `POST /api/profiler/health`: Retrieve or parse performance health snapshot (TPS, MSPT, CPU, Heap, GC, Disk) with automated tuning advice (`{"log": "...", "save": true|false}`).
+- `POST /api/profiler/trigger`: Dispatch Spark or Timings commands directly to running server (`{"action": "health"|"sampler_start"|"sampler_stop"|"timings_paste"|"timings_reset"|"custom", "command": "..."}`).
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -237,12 +245,14 @@ journalctl -u lodestone -f
 - [x] Milestone 2.2: Backup Engine & Snapshots
 - [x] Milestone 2.5: Cron Task Scheduler & Execution Log Viewer
 - [x] Milestone 2.6: Testing Gap Closure & Hardening (≥80% Coverage Gate)
-- [x] Milestone 3.1: Smart Flags & Aikar's JVM Optimizer
+- [x] Milestone 3.1: Performance Profiler & Timings / Spark Engine
+- [x] Milestone 3.1 (Smart Flags): Smart Flags & Aikar's JVM Optimizer
 - [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
-- [x] Milestone 3.3: Administrative Action Audit Logs
-- [x] Milestone 3.3: Crash Analyst & Heuristic Log Diagnostic Engine with Optional AI Consultation
+- [x] Milestone 3.3 (Audit): Administrative Action Audit Logs
+- [x] Milestone 3.3 (Crash Analyst): Crash Analyst & Heuristic Log Diagnostic Engine with Optional AI Consultation
 
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

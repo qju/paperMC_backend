@@ -912,5 +912,56 @@ func TestServerCrashDetectionAndListener(t *testing.T) {
 	}
 }
 
+func TestServerProfilerDetectionAndListener(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_profiler.db")
+	store, err := database.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	server := NewServer(tmpDir, "paper.jar", "4G", store)
+
+	received := make(chan *database.ProfilerReport, 5)
+	server.AddProfilerListener(func(r *database.ProfilerReport) {
+		received <- r
+	})
+
+	logData := `[12:00:00 INFO]: [spark] Profiler results: https://spark.lucko.me/AbCd1234XY
+[12:00:01 INFO]: [Timings] View report: https://timings.aikar.co/?id=testtimings123
+`
+	server.stdout = &stringReadCloser{Reader: strings.NewReader(logData)}
+	server.StreamLogs()
+
+	// Wait for reports from listener
+	var sparkReport, timingsReport *database.ProfilerReport
+	for i := 0; i < 2; i++ {
+		select {
+		case r := <-received:
+			if r.ReportType == "spark_profile" {
+				sparkReport = r
+			} else if r.ReportType == "timings" {
+				timingsReport = r
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("Timed out waiting for profiler listener event %d", i+1)
+		}
+	}
+
+	if sparkReport == nil || sparkReport.URL != "https://spark.lucko.me/AbCd1234XY" {
+		t.Errorf("Spark report mismatch: %+v", sparkReport)
+	}
+	if timingsReport == nil || timingsReport.URL != "https://timings.aikar.co/?id=testtimings123" {
+		t.Errorf("Timings report mismatch: %+v", timingsReport)
+	}
+
+	// Verify persistence in DB
+	reports, total, err := store.ListProfilerReports(10, 0, "")
+	if err != nil || total < 2 || len(reports) < 2 {
+		t.Fatalf("Expected at least 2 profiler reports in DB, got total=%d, err=%v", total, err)
+	}
+}
+
 
 

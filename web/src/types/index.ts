@@ -242,3 +242,34 @@ export interface AIExplanationResponse {
     model: string;
 }
 
+export interface ProfilerReport {
+    id: number;
+    report_type: 'spark_profile' | 'spark_health' | 'timings' | string;
+    title: string;
+    url: string;
+    summary: string;
+    raw_output: string;
+    created_at: string;
+}
+
+export interface ProfilerReportsResponse {
+    reports: ProfilerReport[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface HealthSnapshot {
+    tps: string;
+    mspt: string;
+    cpu_process: string;
+    cpu_system: string;
+    memory_used: string;
+    memory_max: string;
+    memory_percent: string;
+    gc_summary: string;
+    disk_usage: string;
+    advice: string[];
+    raw: string;
+}
+

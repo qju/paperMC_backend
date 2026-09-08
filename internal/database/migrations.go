@@ -158,6 +158,33 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     6,
+		Description: "Add profiler_reports table for spark and timings performance diagnostics",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS profiler_reports (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				report_type TEXT NOT NULL DEFAULT 'spark',
+				title TEXT NOT NULL,
+				url TEXT DEFAULT '',
+				tps TEXT DEFAULT '',
+				mspt TEXT DEFAULT '',
+				cpu_usage TEXT DEFAULT '',
+				memory_usage TEXT DEFAULT '',
+				gc_metrics TEXT DEFAULT '',
+				summary TEXT NOT NULL DEFAULT '',
+				raw_output TEXT NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_profiler_reports_type ON profiler_reports(report_type);
+			CREATE INDEX IF NOT EXISTS idx_profiler_reports_created_at ON profiler_reports(created_at);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

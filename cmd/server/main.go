@@ -174,6 +174,14 @@ func main() {
 		"GET /api/crash/ai-config":   mcHandler.HandleGetAISettings,
 		"POST /api/crash/ai-config":  mcHandler.HandleSaveAISettings,
 		"POST /api/crash/ai-explain": mcHandler.HandleAIExplainCrash,
+
+		// Performance Profiler & Timings / Spark Engine
+		"GET /api/profiler/reports":         mcHandler.HandleListProfilerReports,
+		"GET /api/profiler/reports/{id}":     mcHandler.HandleGetProfilerReport,
+		"DELETE /api/profiler/reports":      mcHandler.HandleDeleteProfilerReport,
+		"DELETE /api/profiler/reports/{id}": mcHandler.HandleDeleteProfilerReport,
+		"POST /api/profiler/health":         mcHandler.HandleProfilerHealth,
+		"POST /api/profiler/trigger":        mcHandler.HandleTriggerProfiler,
 	}
 
 	// Register all the protected routes

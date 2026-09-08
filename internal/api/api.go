@@ -82,6 +82,10 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 			h.hub.Broadcast(WSMessage{Type: "crash_alert", Data: report})
 		})
 
+		mcServer.AddProfilerListener(func(report *database.ProfilerReport) {
+			h.hub.Broadcast(WSMessage{Type: "profiler_event", Data: report})
+		})
+
 		// Broadcast live vitals over WebSockets every 1.5 seconds
 		go func() {
 			ticker := time.NewTicker(1500 * time.Millisecond)
