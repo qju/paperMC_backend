@@ -93,10 +93,12 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.CreateUser(newUser); err != nil {
+		h.recordAudit(r, "user.create", http.StatusInternalServerError, "Failed to create user '"+username+"': "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to create user: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "user.create", http.StatusCreated, "Created user '"+username+"' ("+role+")")
 	respondWithJSON(w, http.StatusCreated, map[string]interface{}{
 		"status":   "User created successfully",
 		"username": username,
@@ -131,6 +133,7 @@ func (h *Handler) HandleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	_, err := h.store.GetUser(username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			h.recordAudit(r, "user.password_change", http.StatusNotFound, "User '"+username+"' not found")
 			respondWithError(w, http.StatusNotFound, "User not found")
 			return
 		}
@@ -145,10 +148,12 @@ func (h *Handler) HandleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.UpdateUserPassword(username, hashedPassword); err != nil {
+		h.recordAudit(r, "user.password_change", http.StatusInternalServerError, "Failed to update password for '"+username+"': "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to update password: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "user.password_change", http.StatusOK, "Updated password for user '"+username+"'")
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "Password updated successfully",
 		"username": username,
@@ -174,15 +179,18 @@ func (h *Handler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(users) <= 1 {
+		h.recordAudit(r, "user.delete", http.StatusBadRequest, "Attempted to delete only remaining user '"+username+"'")
 		respondWithError(w, http.StatusBadRequest, "Cannot delete the only remaining user account")
 		return
 	}
 
 	if err := h.store.DeleteUser(username); err != nil {
+		h.recordAudit(r, "user.delete", http.StatusInternalServerError, "Failed to delete user '"+username+"': "+err.Error())
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete user: "+err.Error())
 		return
 	}
 
+	h.recordAudit(r, "user.delete", http.StatusOK, "Deleted user account '"+username+"'")
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "User deleted successfully",
 		"username": username,

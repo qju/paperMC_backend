@@ -23,14 +23,17 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	User, err := h.store.GetUser(req.Username)
 	if err != nil {
+		h.recordAuditWithUser(req.Username, r, "auth.login_failed", http.StatusNotFound, "User lookup failed")
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	if User == nil {
+		h.recordAuditWithUser(req.Username, r, "auth.login_failed", http.StatusNotFound, "User not found")
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 	if !auth.CheckPasswordHash(req.Password, User.Password) {
+		h.recordAuditWithUser(req.Username, r, "auth.login_failed", http.StatusUnauthorized, "Invalid password")
 		http.Error(w, "Invalid user or password", http.StatusUnauthorized)
 		return
 	}
@@ -39,6 +42,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.recordAuditWithUser(User.Username, r, "auth.login", http.StatusOK, "Successful authentication")
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{Token: token})
 }

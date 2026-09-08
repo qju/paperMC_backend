@@ -187,5 +187,22 @@ export interface FlagPresetInfo {
     sample_flags: string[];
 }
 
+export interface AuditLog {
+    id: number;
+    username: string;
+    action: string;
+    endpoint: string;
+    method: string;
+    details: string;
+    ip_address: string;
+    status_code: number;
+    created_at: string;
+}
 
-
+export interface AuditLogsResponse {
+    logs: AuditLog[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+}

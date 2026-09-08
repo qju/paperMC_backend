@@ -72,3 +72,20 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// GetClaims retrieves validated JWT Claims from request context if present.
+func GetClaims(r *http.Request) *Claims {
+	if claims, ok := r.Context().Value(UserKey).(*Claims); ok {
+		return claims
+	}
+	return nil
+}
+
+// GetUsername retrieves the authenticated username from request context, or empty string.
+func GetUsername(r *http.Request) string {
+	if claims := GetClaims(r); claims != nil {
+		return claims.Username
+	}
+	return ""
+}
+

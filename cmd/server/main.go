@@ -161,6 +161,10 @@ func main() {
 		"GET /api/flags":         mcHandler.HandleGetFlags,
 		"POST /api/flags":        mcHandler.HandleSaveFlags,
 		"GET /api/flags/presets": mcHandler.HandleGetFlagPresets,
+
+		// Audit Logs
+		"GET /api/audit":    mcHandler.HandleGetAuditLogs,
+		"DELETE /api/audit": mcHandler.HandleClearAuditLogs,
 	}
 
 	// Register all the protected routes

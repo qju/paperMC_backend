@@ -96,6 +96,31 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     4,
+		Description: "Add audit_logs table for administrative action tracking",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS audit_logs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				username TEXT NOT NULL,
+				action TEXT NOT NULL,
+				endpoint TEXT NOT NULL,
+				method TEXT NOT NULL,
+				details TEXT DEFAULT '',
+				ip_address TEXT DEFAULT '',
+				status_code INTEGER DEFAULT 200,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_audit_logs_username ON audit_logs(username);
+			CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+			CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

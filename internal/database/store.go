@@ -49,6 +49,18 @@ type ServerFlags struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type AuditLog struct {
+	ID         int       `json:"id"`
+	Username   string    `json:"username"`
+	Action     string    `json:"action"`
+	Endpoint   string    `json:"endpoint"`
+	Method     string    `json:"method"`
+	Details    string    `json:"details"`
+	IPAddress  string    `json:"ip_address"`
+	StatusCode int       `json:"status_code"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type Store interface {
 	Migrate() error
 	Close() error
@@ -79,4 +91,10 @@ type Store interface {
 	// Server Flags & JVM Tuning
 	GetServerFlags() (*ServerFlags, error)
 	SaveServerFlags(flags *ServerFlags) error
+
+	// Audit Logging
+	RecordAuditLog(log *AuditLog) error
+	ListAuditLogs(limit, offset int, actionFilter, userFilter string) ([]AuditLog, int, error)
+	ClearAuditLogs() error
 }
+

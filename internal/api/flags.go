@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -109,10 +110,13 @@ func (h *Handler) HandleSaveFlags(w http.ResponseWriter, r *http.Request) {
 
 	if h.store != nil {
 		if err := h.store.SaveServerFlags(toSave); err != nil {
+			h.recordAudit(r, "flags.save", http.StatusInternalServerError, "Failed to save server flags: "+err.Error())
 			respondWithError(w, http.StatusInternalServerError, "Failed to save server flags: "+err.Error())
 			return
 		}
 	}
+
+	h.recordAudit(r, "flags.save", http.StatusOK, fmt.Sprintf("Saved flags: RAM=%s, Preset=%s", toSave.RAM, toSave.Preset))
 
 	// Update in-memory server RAM so next start picks it up even without store query
 	h.mc.RAM = cleanRAM

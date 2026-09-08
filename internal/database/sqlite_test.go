@@ -272,3 +272,134 @@ func TestSQLiteStoreServerFlags(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAuditLogs(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_audit.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize SQLite store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Initially empty
+	logs, total, err := store.ListAuditLogs(50, 0, "", "")
+	if err != nil {
+		t.Fatalf("ListAuditLogs on empty table failed: %v", err)
+	}
+	if total != 0 || len(logs) != 0 {
+		t.Errorf("Expected 0 logs initially, got total=%d len=%d", total, len(logs))
+	}
+
+	// 2. Insert records
+	entries := []*AuditLog{
+		{
+			Username:   "admin",
+			Action:     "server.start",
+			Endpoint:   "/start",
+			Method:     "POST",
+			Details:    "Server initiated",
+			IPAddress:  "127.0.0.1",
+			StatusCode: 200,
+		},
+		{
+			Username:   "admin",
+			Action:     "server.stop",
+			Endpoint:   "/stop",
+			Method:     "POST",
+			Details:    "Server halted",
+			IPAddress:  "127.0.0.1",
+			StatusCode: 200,
+		},
+		{
+			Username:   "operator1",
+			Action:     "player.whitelist_add",
+			Endpoint:   "/api/players",
+			Method:     "POST",
+			Details:    "Player Steve whitelisted",
+			IPAddress:  "192.168.1.50",
+			StatusCode: 200,
+		},
+		{
+			Username:   "unknown",
+			Action:     "auth.login_failed",
+			Endpoint:   "/login",
+			Method:     "POST",
+			Details:    "Invalid credentials",
+			IPAddress:  "10.0.0.1",
+			StatusCode: 401,
+		},
+	}
+
+	for _, e := range entries {
+		if err := store.RecordAuditLog(e); err != nil {
+			t.Fatalf("RecordAuditLog failed for %s: %v", e.Action, err)
+		}
+		if e.ID <= 0 {
+			t.Errorf("Expected positive ID assigned to recorded log, got %d", e.ID)
+		}
+	}
+
+	// 3. List all logs with pagination
+	allLogs, total, err := store.ListAuditLogs(10, 0, "", "")
+	if err != nil {
+		t.Fatalf("ListAuditLogs failed: %v", err)
+	}
+	if total != 4 || len(allLogs) != 4 {
+		t.Fatalf("Expected 4 logs, got total=%d len=%d", total, len(allLogs))
+	}
+	// Verify DESC ordering by ID
+	if allLogs[0].ID < allLogs[1].ID {
+		t.Errorf("Expected descending ordering by ID: first=%d second=%d", allLogs[0].ID, allLogs[1].ID)
+	}
+
+	// 4. Test Limit & Offset
+	page1, total, err := store.ListAuditLogs(2, 0, "", "")
+	if err != nil || total != 4 || len(page1) != 2 {
+		t.Errorf("Expected 2 logs for limit=2, got len=%d total=%d", len(page1), total)
+	}
+	page2, total, err := store.ListAuditLogs(2, 2, "", "")
+	if err != nil || total != 4 || len(page2) != 2 {
+		t.Errorf("Expected 2 logs for page 2, got len=%d total=%d", len(page2), total)
+	}
+	if page1[0].ID == page2[0].ID {
+		t.Errorf("Page 1 and Page 2 should have distinct items")
+	}
+
+	// 5. Test Action Filter prefix
+	serverLogs, count, err := store.ListAuditLogs(50, 0, "server", "")
+	if err != nil {
+		t.Fatalf("ListAuditLogs with server filter failed: %v", err)
+	}
+	if count != 2 || len(serverLogs) != 2 {
+		t.Errorf("Expected 2 server logs, got count=%d len=%d", count, len(serverLogs))
+	}
+
+	// 6. Test Action Filter exact / wildcard
+	exactLogs, count, err := store.ListAuditLogs(50, 0, "auth.login_failed", "")
+	if err != nil || count != 1 || len(exactLogs) != 1 {
+		t.Errorf("Expected 1 exact match for auth.login_failed, got count=%d len=%d", count, len(exactLogs))
+	}
+
+	wildcardLogs, count, err := store.ListAuditLogs(50, 0, "%whitelist%", "")
+	if err != nil || count != 1 || len(wildcardLogs) != 1 {
+		t.Errorf("Expected 1 wildcard match for %%whitelist%%, got count=%d len=%d", count, len(wildcardLogs))
+	}
+
+	// 7. Test User Filter
+	userLogs, count, err := store.ListAuditLogs(50, 0, "", "operator1")
+	if err != nil || count != 1 || len(userLogs) != 1 {
+		t.Errorf("Expected 1 log for operator1, got count=%d len=%d", count, len(userLogs))
+	}
+
+	// 8. Test Clear Audit Logs
+	if err := store.ClearAuditLogs(); err != nil {
+		t.Fatalf("ClearAuditLogs failed: %v", err)
+	}
+	afterClear, totalAfter, err := store.ListAuditLogs(50, 0, "", "")
+	if err != nil || totalAfter != 0 || len(afterClear) != 0 {
+		t.Errorf("Expected 0 logs after clear, got total=%d len=%d", totalAfter, len(afterClear))
+	}
+}
+
+
