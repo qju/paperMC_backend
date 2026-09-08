@@ -28,6 +28,7 @@ type Handler struct {
 	geyserClient   *plugins.GeyserClient
 	modrinthClient *plugins.ModrinthClient
 	aiClient       *ai.Client
+	loginLimiter   *LoginRateLimiter
 }
 
 type StatusResponse struct {
@@ -71,6 +72,7 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 		geyserClient:   plugins.NewGeyserClient(),
 		modrinthClient: plugins.NewModrinthClient(),
 		aiClient:       ai.NewClient(),
+		loginLimiter:   NewLoginRateLimiter(5, 10*time.Minute, 15*time.Minute),
 	}
 
 	if mcServer != nil {

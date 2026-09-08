@@ -23,7 +23,7 @@ func myKeyFunc(token *jwt.Token) (any, error) {
 	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 		return nil, jwt.ErrSignatureInvalid
 	}
-	return jwtSecret, nil
+	return GetJWTSecret(), nil
 }
 
 func ValidateToken(tokenString string) (*Claims, error) {
