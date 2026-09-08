@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Shield, Plus, Key, Trash2, RefreshCw, CheckCircle, XCircle, ShieldCheck, ShieldAlert, KeyRound, Copy, Check } from 'lucide-react';
+import {
+    Shield, Plus, Key, Trash2, RefreshCw, CheckCircle, XCircle,
+    ShieldCheck, ShieldAlert, KeyRound, Copy, Check, QrCode,
+    Download, ArrowRight, ArrowLeft, AlertTriangle, Smartphone
+} from 'lucide-react';
+import QRCode from 'qrcode';
 
 interface User {
     id: number;
@@ -34,8 +39,11 @@ export default function Users() {
     const [mfaEnabled, setMfaEnabled] = useState(false);
     const [mfaLoading, setMfaLoading] = useState(false);
     const [showSetupModal, setShowSetupModal] = useState(false);
+    const [setupStep, setSetupStep] = useState<1 | 2 | 3>(1);
     const [mfaSecret, setMfaSecret] = useState('');
     const [mfaAuthURL, setMfaAuthURL] = useState('');
+    const [qrCodeDataURL, setQrCodeDataURL] = useState('');
+    const [showManualSecret, setShowManualSecret] = useState(false);
     const [mfaBackupCodes, setMfaBackupCodes] = useState<string[]>([]);
     const [mfaVerifyCode, setMfaVerifyCode] = useState('');
     const [activatingMFA, setActivatingMFA] = useState(false);
@@ -122,6 +130,25 @@ export default function Users() {
                 setMfaVerifyCode('');
                 setCopiedSecret(false);
                 setCopiedBackupCodes(false);
+                setShowManualSecret(false);
+                setSetupStep(1);
+
+                if (data.otpauth_url) {
+                    try {
+                        const qrUrl = await QRCode.toDataURL(data.otpauth_url, {
+                            width: 220,
+                            margin: 2,
+                            color: {
+                                dark: '#000000',
+                                light: '#ffffff'
+                            }
+                        });
+                        setQrCodeDataURL(qrUrl);
+                    } catch (qrErr) {
+                        console.error("Failed generating QR code", qrErr);
+                    }
+                }
+
                 setShowSetupModal(true);
             } else {
                 showToast(data?.error || "Failed to initialize 2FA setup", 'error');
@@ -131,6 +158,33 @@ export default function Users() {
         } finally {
             setMfaLoading(false);
         }
+    };
+
+    const handleDownloadBackupCodes = () => {
+        const text = [
+            '====================================================',
+            ' LODESTONE MINECRAFT MANAGER - 2FA RECOVERY CODES',
+            ` Generated: ${new Date().toLocaleString()}`,
+            '====================================================',
+            '',
+            'IMPORTANT: Each backup recovery code can be used ONCE.',
+            'Store this file securely (e.g. in your password manager).',
+            '',
+            ...mfaBackupCodes.map((c, i) => ` Code #${i + 1}: ${c}`),
+            '',
+            '===================================================='
+        ].join('\n');
+
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lodestone-2fa-backup-codes-${new Date().toISOString().slice(0, 10)}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('Backup recovery codes downloaded (.txt)', 'success');
     };
 
     const handleConfirm2FA = async (e: React.FormEvent) => {
@@ -453,123 +507,284 @@ export default function Users() {
                 </div>
             )}
 
-            {/* 2FA SETUP MODAL */}
+            {/* 2FA SETUP MODAL - 3-STEP GUIDED FLOW */}
             {showSetupModal && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-black/90 border border-white/20 rounded-xl p-6 w-full max-w-lg space-y-5 shadow-2xl my-8">
+                <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-zinc-950/95 border border-white/20 rounded-2xl p-6 w-full max-w-lg space-y-5 shadow-2xl my-8">
+                        {/* Modal Header */}
                         <div className="flex justify-between items-center border-b border-white/10 pb-3">
                             <h3 className="text-lg font-pixel text-mc-diamond flex items-center gap-2">
                                 <ShieldCheck size={20} /> Setup Two-Factor Authentication
                             </h3>
-                            <button onClick={() => setShowSetupModal(false)} className="text-white/50 hover:text-white">
+                            <button onClick={() => setShowSetupModal(false)} className="text-white/50 hover:text-white transition-colors">
                                 <XCircle size={20} />
                             </button>
                         </div>
 
-                        {/* Step 1: Secret Key */}
-                        <div className="space-y-2">
-                            <label className="block text-xs uppercase font-mono text-white/70 font-bold">
-                                Step 1: Add Key to Authenticator App
-                            </label>
-                            <p className="text-xs font-mono text-white/50">
-                                Open Google Authenticator, 1Password, or Authy, choose <em>Add Account &gt; Enter key manually</em>:
-                            </p>
-                            <div className="flex items-center gap-2 p-2.5 bg-black/60 border border-white/10 rounded-lg">
-                                <code className="flex-1 font-mono text-sm tracking-wider text-mc-gold select-all break-all">
-                                    {mfaSecret}
-                                </code>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        navigator.clipboard.writeText(mfaSecret);
-                                        setCopiedSecret(true);
-                                        setTimeout(() => setCopiedSecret(false), 2000);
-                                    }}
-                                    className="px-2.5 py-1.5 rounded text-xs font-mono bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 transition-colors"
-                                    title="Copy Secret"
-                                >
-                                    {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                                    {copiedSecret ? "Copied" : "Copy"}
-                                </button>
+                        {/* Step Indicator / Stepper */}
+                        <div className="grid grid-cols-3 gap-2 p-1.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-center">
+                            <div
+                                className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                                    setupStep === 1
+                                        ? 'bg-mc-diamond/20 text-mc-diamond font-bold border border-mc-diamond/40'
+                                        : setupStep > 1
+                                        ? 'text-emerald-400 font-semibold'
+                                        : 'text-white/40'
+                                }`}
+                            >
+                                {setupStep > 1 ? <Check size={14} className="text-emerald-400" /> : <span className="w-4 h-4 rounded-full bg-white/10 text-[10px] flex items-center justify-center">1</span>}
+                                <span>1. Scan QR</span>
                             </div>
-                            {mfaAuthURL && (
-                                <div className="text-right">
-                                    <a
-                                        href={mfaAuthURL}
-                                        className="text-[11px] font-mono text-mc-diamond/80 hover:text-mc-diamond hover:underline"
-                                    >
-                                        Open in Authenticator App &rarr;
-                                    </a>
+                            <div
+                                className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                                    setupStep === 2
+                                        ? 'bg-mc-diamond/20 text-mc-diamond font-bold border border-mc-diamond/40'
+                                        : setupStep > 2
+                                        ? 'text-emerald-400 font-semibold'
+                                        : 'text-white/40'
+                                }`}
+                            >
+                                {setupStep > 2 ? <Check size={14} className="text-emerald-400" /> : <span className="w-4 h-4 rounded-full bg-white/10 text-[10px] flex items-center justify-center">2</span>}
+                                <span>2. Backup</span>
+                            </div>
+                            <div
+                                className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                                    setupStep === 3
+                                        ? 'bg-mc-diamond/20 text-mc-diamond font-bold border border-mc-diamond/40'
+                                        : 'text-white/40'
+                                }`}
+                            >
+                                <span className="w-4 h-4 rounded-full bg-white/10 text-[10px] flex items-center justify-center">3</span>
+                                <span>3. Verify</span>
+                            </div>
+                        </div>
+
+                        {/* STEP 1: SCAN QR CODE */}
+                        {setupStep === 1 && (
+                            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="text-center space-y-1">
+                                    <h4 className="font-mono font-bold text-sm text-white flex items-center justify-center gap-1.5">
+                                        <QrCode size={16} className="text-mc-diamond" /> Scan with Your Authenticator App
+                                    </h4>
+                                    <p className="text-xs font-mono text-white/50">
+                                        Compatible with Google Authenticator, Microsoft Authenticator, 1Password, Authy, or Apple Passwords.
+                                    </p>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Step 2: Backup Recovery Codes */}
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                                <label className="block text-xs uppercase font-mono text-white/70 font-bold">
-                                    Step 2: Save Emergency Recovery Codes
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        navigator.clipboard.writeText(mfaBackupCodes.join('\n'));
-                                        setCopiedBackupCodes(true);
-                                        setTimeout(() => setCopiedBackupCodes(false), 2000);
-                                    }}
-                                    className="text-[11px] font-mono text-mc-diamond hover:underline flex items-center gap-1"
-                                >
-                                    {copiedBackupCodes ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                                    {copiedBackupCodes ? "Codes Copied" : "Copy All Codes"}
-                                </button>
-                            </div>
-                            <p className="text-xs font-mono text-white/50">
-                                Store these single-use codes safely. Each code can be used once if you lose access to your device.
-                            </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-3 bg-black/60 border border-white/10 rounded-lg">
-                                {mfaBackupCodes.map((code, idx) => (
-                                    <div key={idx} className="font-mono text-xs text-white/80 bg-white/5 px-2 py-1 rounded text-center select-all">
-                                        {code}
+                                {/* QR Code Display */}
+                                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl shadow-2xl mx-auto w-fit border-2 border-white/10">
+                                    {qrCodeDataURL ? (
+                                        <img
+                                            src={qrCodeDataURL}
+                                            alt="2FA QR Code"
+                                            className="w-48 h-48 block select-none"
+                                        />
+                                    ) : (
+                                        <div className="w-48 h-48 flex flex-col items-center justify-center text-zinc-500 font-mono text-xs gap-2">
+                                            <RefreshCw size={24} className="animate-spin text-emerald-600" />
+                                            <span>Generating QR Code...</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* How-to instructions */}
+                                <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white/70 space-y-1.5">
+                                    <div className="flex items-center gap-2 text-white font-bold">
+                                        <Smartphone size={15} className="text-mc-diamond" />
+                                        <span>How to connect:</span>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
+                                    <ol className="list-decimal list-inside space-y-1 text-white/60 text-[11px] pl-1">
+                                        <li>Open your authenticator app on your mobile phone.</li>
+                                        <li>Tap <strong className="text-white">+</strong> or <strong className="text-white">Add Account</strong> and select <strong className="text-white">Scan QR Code</strong>.</li>
+                                        <li>Point your camera at the QR code above.</li>
+                                    </ol>
+                                </div>
 
-                        {/* Step 3: Confirmation Code */}
-                        <form onSubmit={handleConfirm2FA} className="space-y-4 pt-2 border-t border-white/10">
-                            <div>
-                                <label className="block text-xs uppercase font-mono text-white/70 font-bold mb-1.5 flex items-center gap-1.5">
-                                    <KeyRound size={14} className="text-mc-diamond" /> Step 3: Enter 6-Digit Code to Activate
-                                </label>
-                                <input
-                                    type="text"
-                                    value={mfaVerifyCode}
-                                    onChange={(e) => setMfaVerifyCode(e.target.value)}
-                                    placeholder="000000"
-                                    maxLength={6}
-                                    required
-                                    className="w-full bg-black/60 border border-white/20 rounded-lg p-3 text-center text-white font-mono text-lg tracking-widest focus:border-mc-diamond focus:outline-none"
-                                />
-                            </div>
+                                {/* Collapsible Manual Key */}
+                                <div className="border border-white/10 rounded-xl overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManualSecret(!showManualSecret)}
+                                        className="w-full px-3 py-2 text-left text-xs font-mono text-white/60 hover:text-white bg-black/40 flex items-center justify-between transition-colors"
+                                    >
+                                        <span>Can't scan the QR code? Enter key manually</span>
+                                        <span className="text-[11px] text-mc-diamond">{showManualSecret ? 'Hide Key' : 'Show Key'}</span>
+                                    </button>
+                                    {showManualSecret && (
+                                        <div className="p-3 bg-black/60 border-t border-white/10 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <code className="flex-1 font-mono text-xs text-mc-gold select-all break-all bg-black/80 px-2.5 py-1.5 rounded-lg border border-white/10">
+                                                    {mfaSecret}
+                                                </code>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(mfaSecret);
+                                                        setCopiedSecret(true);
+                                                        setTimeout(() => setCopiedSecret(false), 2000);
+                                                    }}
+                                                    className="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 transition-colors shrink-0"
+                                                >
+                                                    {copiedSecret ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                                    {copiedSecret ? 'Copied' : 'Copy'}
+                                                </button>
+                                            </div>
+                                            {mfaAuthURL && (
+                                                <div className="text-right">
+                                                    <a
+                                                        href={mfaAuthURL}
+                                                        className="text-[11px] font-mono text-mc-diamond/80 hover:text-mc-diamond hover:underline"
+                                                    >
+                                                        Open in Authenticator App &rarr;
+                                                    </a>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
-                            <div className="flex justify-end gap-3 pt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowSetupModal(false)}
-                                    className="px-4 py-2 rounded font-mono text-sm bg-white/10 hover:bg-white/20 text-white"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={activatingMFA || mfaVerifyCode.trim().length !== 6}
-                                    className="px-5 py-2 rounded font-mono font-bold text-sm bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white flex items-center gap-2 transition-colors shadow-lg"
-                                >
-                                    {activatingMFA ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                                    {activatingMFA ? 'Verifying...' : 'Activate 2FA'}
-                                </button>
+                                {/* Step 1 Footer Buttons */}
+                                <div className="flex justify-between items-center pt-3 border-t border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSetupModal(false)}
+                                        className="px-4 py-2 rounded-lg font-mono text-xs text-white/50 hover:text-white transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSetupStep(2)}
+                                        className="px-5 py-2.5 rounded-lg font-mono font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 transition-all shadow-lg active:scale-[0.99]"
+                                    >
+                                        <span>Next: Save Backup Codes</span>
+                                        <ArrowRight size={14} />
+                                    </button>
+                                </div>
                             </div>
-                        </form>
+                        )}
+
+                        {/* STEP 2: EMERGENCY RECOVERY BACKUP CODES */}
+                        {setupStep === 2 && (
+                            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="p-3.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-xs font-mono text-yellow-200/90 space-y-1.5">
+                                    <div className="flex items-center gap-2 font-bold text-yellow-300">
+                                        <AlertTriangle size={16} />
+                                        <span>Save Your Emergency Recovery Codes</span>
+                                    </div>
+                                    <p className="text-[11px] text-yellow-100/70 leading-relaxed">
+                                        If you lose your phone or cannot access your authenticator app, these 8 single-use codes are the <strong className="text-white">only way</strong> to log into your administrator account.
+                                    </p>
+                                </div>
+
+                                {/* Grid of Codes */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3.5 bg-black/60 border border-white/10 rounded-xl">
+                                    {mfaBackupCodes.map((code, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="font-mono text-xs text-white/90 bg-white/5 border border-white/10 px-2.5 py-2 rounded-lg text-center select-all font-semibold tracking-wider shadow-sm"
+                                        >
+                                            {code}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Backup Actions */}
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(mfaBackupCodes.join('\n'));
+                                            setCopiedBackupCodes(true);
+                                            setTimeout(() => setCopiedBackupCodes(false), 2000);
+                                        }}
+                                        className="flex-1 py-2 px-3 rounded-lg font-mono text-xs bg-white/10 hover:bg-white/20 text-white flex items-center justify-center gap-1.5 transition-colors border border-white/10"
+                                    >
+                                        {copiedBackupCodes ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                        {copiedBackupCodes ? 'Codes Copied!' : 'Copy All Codes'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadBackupCodes}
+                                        className="flex-1 py-2 px-3 rounded-lg font-mono text-xs bg-mc-diamond/10 hover:bg-mc-diamond/20 border border-mc-diamond/30 text-mc-diamond flex items-center justify-center gap-1.5 transition-colors"
+                                    >
+                                        <Download size={14} /> Download Backup (.txt)
+                                    </button>
+                                </div>
+
+                                <p className="text-[11px] font-mono text-white/40 text-center">
+                                    Each recovery code is single-use. Store them in a password manager or secure vault.
+                                </p>
+
+                                {/* Step 2 Footer Buttons */}
+                                <div className="flex justify-between items-center pt-3 border-t border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSetupStep(1)}
+                                        className="px-4 py-2 rounded-lg font-mono text-xs text-white/60 hover:text-white flex items-center gap-1.5 transition-colors"
+                                    >
+                                        <ArrowLeft size={14} /> Back
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSetupStep(3)}
+                                        className="px-5 py-2.5 rounded-lg font-mono font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 transition-all shadow-lg active:scale-[0.99]"
+                                    >
+                                        <span>Next: Verify Code</span>
+                                        <ArrowRight size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* STEP 3: CONFIRM & ACTIVATE 2FA */}
+                        {setupStep === 3 && (
+                            <form onSubmit={handleConfirm2FA} className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs font-mono text-white/70 space-y-1">
+                                    <div className="flex items-center gap-2 text-white font-bold">
+                                        <ShieldCheck size={16} className="text-emerald-400" />
+                                        <span>Verify Connection & Activate</span>
+                                    </div>
+                                    <p className="text-[11px] text-white/60 leading-relaxed">
+                                        Enter the 6-digit code currently shown in your authenticator app for <strong>Lodestone</strong> to confirm setup.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs uppercase font-mono text-white/60 mb-2 flex items-center gap-1.5">
+                                        <KeyRound size={14} className="text-mc-diamond" /> 6-Digit Authenticator Code
+                                    </label>
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        value={mfaVerifyCode}
+                                        onChange={(e) => setMfaVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        placeholder="000000"
+                                        maxLength={6}
+                                        required
+                                        className="w-full bg-black/60 border border-white/20 rounded-xl p-3 text-center text-white font-mono text-2xl tracking-[0.4em] focus:border-mc-diamond focus:bg-black/90 focus:outline-none transition-colors"
+                                    />
+                                </div>
+
+                                <div className="flex justify-between items-center pt-3 border-t border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSetupStep(2)}
+                                        className="px-4 py-2 rounded-lg font-mono text-xs text-white/60 hover:text-white flex items-center gap-1.5 transition-colors"
+                                    >
+                                        <ArrowLeft size={14} /> Back
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={activatingMFA || mfaVerifyCode.trim().length !== 6}
+                                        className="px-5 py-2.5 rounded-lg font-mono font-bold text-sm bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white flex items-center gap-2 transition-all shadow-lg active:scale-[0.99]"
+                                    >
+                                        {activatingMFA ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                                        {activatingMFA ? 'Verifying Code...' : 'Activate 2FA Protection'}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 </div>
             )}

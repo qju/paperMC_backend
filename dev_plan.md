@@ -180,7 +180,7 @@
 - [x] **Task:** Implement 8 emergency single-use backup recovery codes with hashed verification and database consumption.
 - [x] **Task:** Implement dual-token session architecture: short-lived access JWT (15m) + rotated refresh tokens (7d) in HttpOnly strict cookies.
 - [x] **Task:** Expose REST endpoints: `POST /api/auth/login`, `POST /api/auth/2fa/verify-login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/2fa/status`, `POST /api/auth/2fa/setup`, `POST /api/auth/2fa/enable`, `POST /api/auth/2fa/disable`.
-- [x] **Task:** Implement Frontend 2FA challenge on Login page (`Login.tsx`) and 2FA setup, secret key copying, backup recovery code storage, and disable workflows on Users page (`Users.tsx`).
+- [x] **Task:** Implement Frontend 2FA challenge on Login page (`Login.tsx`) and 3-step setup wizard on Users page (`Users.tsx`) with real-time QR code rendering for authenticator apps, recovery code download/copy, and verification.
 
 ### Milestone 5.3: Java Process Isolation Engine & System Hardening
 - [x] **Task:** Implement process isolation engine (`internal/minecraft/sandbox.go`) supporting `none`, `user`, and `bwrap` modes.
