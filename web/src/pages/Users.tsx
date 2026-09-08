@@ -223,6 +223,7 @@ export default function Users() {
                 setMfaEnabled(true);
                 setShowSetupModal(false);
                 setMfaVerifyCode('');
+                fetchUsers();
             } else {
                 showToast(data?.error || "Invalid verification code", 'error');
             }
@@ -259,6 +260,7 @@ export default function Users() {
                 setMfaEnabled(false);
                 setShowDisableModal(false);
                 setDisablePasswordOrCode('');
+                fetchUsers();
             } else {
                 showToast(data?.error || "Failed to disable 2FA", 'error');
             }
