@@ -92,8 +92,15 @@
 ## 🚀 Phase 3: The "Beat Crafty" Features
 *Focus: Specialized Minecraft tools that general-purpose managers lack.*
 
-### Milestone 3.1: Deep Integration & Smart Flags (JVM / Aikar's Flags Optimizer)
-- [ ] **Task:** **Timings Viewer:** Parse `timings report` output.
+### Milestone 3.1: Deep Integration & Smart Flags (JVM / Aikar's Flags Optimizer & Spark Profiler)
+- [x] **Task:** **Timings Viewer & Spark Profiler Integration:**
+  - Database migration v6 (`profiler_reports` table) tracking report type (`spark_profile`, `spark_health`, `timings`), title, URL, summary, raw output, and timestamp with indexes.
+  - Store interface CRUD methods (`RecordProfilerReport`, `ListProfilerReports`, `GetProfilerReport`, `DeleteProfilerReport`, `ClearProfilerReports`).
+  - Pure-Go Health and Profiler parsing engine (`internal/profiler/parser.go`) extracting multi-duration TPS, MSPT tick durations, dual process/system CPU load, JVM heap allocation, GC collection activity, disk usage, and generating actionable server tuning advice.
+  - Console log listener in `internal/minecraft/server.go` automatically intercepting generated Spark (`spark.lucko.me`) and Aikar Timings (`timings.aikar.co`, `timings.papermc.io`) links, recording them to DB, and broadcasting `profiler_event` over WebSockets (`/ws`).
+  - REST API endpoints (`GET /api/profiler/reports`, `GET /api/profiler/reports/{id}`, `DELETE /api/profiler/reports`, `POST /api/profiler/health`, `POST /api/profiler/trigger`) with audit logging.
+  - Dark glassmorphic React UI dashboard (`web/src/pages/PerformanceProfiler.tsx`) with live telemetry cards (TPS, MSPT, CPU, Memory), automated tuning heuristics panel, profiler command dispatcher, real-time captured link banner, and historical reports archive table.
+  - Strict $\ge 80\%$ test coverage maintained across all internal packages (`internal/profiler` 97.8%, `internal/api` 81.9%, `internal/database` 87.2%, `internal/minecraft` 92.5%).
 - [x] **Task:** **Smart Flags:** Implement a preset manager for Aikar's flags based on detected/selected RAM:
   - Database migration v3 (`server_flags` table) tracking RAM, preset (`aikar`, `minimal`, `none`, `custom`), and custom flags.
   - Dedicated flags engine (`internal/flags`) dynamically tuning G1GC parameters (adapting young gen and reserve thresholds between `<12GB` and `≥12GB`).
@@ -151,3 +158,4 @@
 - [x] **Task:** **Plugins & Bedrock Bridge Dashboard:** Installed plugins inspector with enable/disable toggle, file upload, Modrinth marketplace browser, and dedicated Geyser/Floodgate Bedrock compatibility hub with 1-click update.
 - [x] **Task:** **Audit Logs Dashboard:** Chronological administrative activity audit log viewer with category badges, user filters, search, IP tracking, and history purge modal.
 - [x] **Task:** **Crash Analyst Dashboard:** Heuristic diagnostics incident viewer with category filter badges, root-cause summaries, step-by-step resolution advice, raw stack trace drawer, manual log dump analyzer, AI configuration modal, and interactive AI consultation assistant.
+- [x] **Task:** **Performance Profiler & Spark Dashboard:** Dark glassmorphic dashboard (`web/src/pages/PerformanceProfiler.tsx`) featuring real-time telemetry metrics (TPS, MSPT, CPU, Memory Heap), GC collection monitoring, automated JVM tuning heuristics, quick action dispatcher, custom command runner, live captured profiler URL banner, and historical reports archive with modal inspection.

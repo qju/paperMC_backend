@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Vitals, CrashReport } from '../types';
+import type { Vitals, CrashReport, ProfilerReport } from '../types';
 
 type WSIncomingMessage =
     | { type: 'log'; data: string }
     | { type: 'error'; data: string }
     | { type: 'vitals'; data: Vitals }
-    | { type: 'crash_alert'; data: CrashReport };
+    | { type: 'crash_alert'; data: CrashReport }
+    | { type: 'profiler_event'; data: ProfilerReport };
 
 export function useSocket() {
     const [isConnected, setIsConnected] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [liveVitals, setLiveVitals] = useState<Vitals | null>(null);
     const [crashAlert, setCrashAlert] = useState<CrashReport | null>(null);
+    const [profilerEvent, setProfilerEvent] = useState<ProfilerReport | null>(null);
 
     // We use ref because we need to talk to the *same* useSocket
     // across different render of the component.
@@ -44,6 +46,8 @@ export function useSocket() {
                     setLiveVitals(msg.data);
                 } else if (msg.type === 'crash_alert') {
                     setCrashAlert(msg.data);
+                } else if (msg.type === 'profiler_event') {
+                    setProfilerEvent(msg.data);
                 }
             } catch (err) {
                 console.error("WS Parse Error", err);
@@ -60,6 +64,10 @@ export function useSocket() {
         setCrashAlert(null);
     }, []);
 
+    const clearProfilerEvent = useCallback(() => {
+        setProfilerEvent(null);
+    }, []);
+
     // Helper function to send data BACK to server
     const sendCommand = (cmd: string) => {
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -67,6 +75,6 @@ export function useSocket() {
         }
     };
 
-    return { isConnected, logs, liveVitals, crashAlert, clearCrashAlert, sendCommand };
+    return { isConnected, logs, liveVitals, crashAlert, clearCrashAlert, profilerEvent, clearProfilerEvent, sendCommand };
 }
 

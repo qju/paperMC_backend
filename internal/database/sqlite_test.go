@@ -522,5 +522,110 @@ func TestSQLiteStoreCrashReportsAndAI(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreProfilerReports(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_profiler_reports.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize SQLite store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Initially empty
+	reports, total, err := store.ListProfilerReports(50, 0, "")
+	if err != nil {
+		t.Fatalf("ListProfilerReports failed: %v", err)
+	}
+	if total != 0 || len(reports) != 0 {
+		t.Errorf("Expected 0 profiler reports initially, got total=%d, len=%d", total, len(reports))
+	}
+
+	// 2. Insert records
+	r1 := &ProfilerReport{
+		ReportType:  "spark_profile",
+		Title:       "Spark Sampler Session",
+		URL:         "https://spark.lucko.me/abc123XYZ",
+		TPS:         "20.0",
+		MSPT:        "15.4",
+		CPUUsage:    "12.5%",
+		MemoryUsage: "2.1GB / 6.0GB",
+		GCMetrics:   "G1 Young Gen: 12ms",
+		Summary:     "Healthy tick loop, low GC overhead",
+		RawOutput:   "Spark sampler output...",
+	}
+	if err := store.RecordProfilerReport(r1); err != nil {
+		t.Fatalf("RecordProfilerReport failed: %v", err)
+	}
+	if r1.ID <= 0 {
+		t.Errorf("Expected valid ID, got %d", r1.ID)
+	}
+
+	r2 := &ProfilerReport{
+		ReportType:  "timings",
+		Title:       "Aikar Timings Report",
+		URL:         "https://timings.aikar.co/?id=def456UVW",
+		TPS:         "19.8",
+		MSPT:        "22.1",
+		Summary:     "Timings report paste",
+		RawOutput:   "Timings paste raw...",
+	}
+	if err := store.RecordProfilerReport(r2); err != nil {
+		t.Fatalf("RecordProfilerReport r2 failed: %v", err)
+	}
+
+	// 3. List all with pagination
+	all, total, err := store.ListProfilerReports(10, 0, "")
+	if err != nil || total != 2 || len(all) != 2 {
+		t.Fatalf("Expected 2 reports, got total=%d, len=%d, err=%v", total, len(all), err)
+	}
+	if all[0].ID != r2.ID {
+		t.Errorf("Expected newest first (r2 ID %d), got %d", r2.ID, all[0].ID)
+	}
+
+	// 4. Filter by report_type
+	sparkOnly, totalSpark, err := store.ListProfilerReports(10, 0, "spark_profile")
+	if err != nil || totalSpark != 1 || len(sparkOnly) != 1 {
+		t.Fatalf("Expected 1 spark report, got total=%d, len=%d", totalSpark, len(sparkOnly))
+	}
+	if sparkOnly[0].ID != r1.ID {
+		t.Errorf("Expected r1 for spark filter, got %d", sparkOnly[0].ID)
+	}
+
+	// 5. Get by ID
+	fetched, err := store.GetProfilerReport(r1.ID)
+	if err != nil {
+		t.Fatalf("GetProfilerReport failed: %v", err)
+	}
+	if fetched == nil || fetched.URL != "https://spark.lucko.me/abc123XYZ" {
+		t.Errorf("Unexpected fetched report: %+v", fetched)
+	}
+
+	// Non-existent ID
+	nonExistent, err := store.GetProfilerReport(99999)
+	if err != nil || nonExistent != nil {
+		t.Errorf("Expected nil for non-existent report, got err=%v, report=%v", err, nonExistent)
+	}
+
+	// 6. Delete individual report
+	if err := store.DeleteProfilerReport(r1.ID); err != nil {
+		t.Fatalf("DeleteProfilerReport failed: %v", err)
+	}
+	afterDel, totalDel, err := store.ListProfilerReports(10, 0, "")
+	if err != nil || totalDel != 1 || len(afterDel) != 1 {
+		t.Fatalf("Expected 1 report after delete, got total=%d", totalDel)
+	}
+
+	// 7. Clear all reports
+	if err := store.ClearProfilerReports(); err != nil {
+		t.Fatalf("ClearProfilerReports failed: %v", err)
+	}
+	afterClear, totalClear, err := store.ListProfilerReports(10, 0, "")
+	if err != nil || totalClear != 0 || len(afterClear) != 0 {
+		t.Errorf("Expected 0 reports after clear, got %d", totalClear)
+	}
+}
+
+
 
 

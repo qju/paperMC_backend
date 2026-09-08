@@ -559,4 +559,92 @@ func (s *SQLiteStore) SaveAISettings(settings *AISettings) error {
 	return err
 }
 
+func (s *SQLiteStore) RecordProfilerReport(report *ProfilerReport) error {
+	query := `INSERT INTO profiler_reports (report_type, title, url, tps, mspt, cpu_usage, memory_usage, gc_metrics, summary, raw_output, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	now := time.Now().UTC()
+	if report.CreatedAt.IsZero() {
+		report.CreatedAt = now
+	}
+	res, err := s.db.Exec(query, report.ReportType, report.Title, report.URL, report.TPS, report.MSPT, report.CPUUsage, report.MemoryUsage, report.GCMetrics, report.Summary, report.RawOutput, report.CreatedAt.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		report.ID = int(id)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListProfilerReports(limit, offset int, reportType string) ([]ProfilerReport, int, error) {
+	whereClause := ""
+	var args []interface{}
+	if strings.TrimSpace(reportType) != "" {
+		whereClause = " WHERE report_type = ?"
+		args = append(args, strings.TrimSpace(reportType))
+	}
+
+	countSQL := "SELECT COUNT(*) FROM profiler_reports" + whereClause
+	var total int
+	if err := s.db.QueryRow(countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := `SELECT id, report_type, title, url, tps, mspt, cpu_usage, memory_usage, gc_metrics, summary, raw_output, created_at
+		FROM profiler_reports` + whereClause + ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	dataArgs := append(args, limit, offset)
+	rows, err := s.db.Query(query, dataArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	reports := []ProfilerReport{}
+	for rows.Next() {
+		var r ProfilerReport
+		var createdStr string
+		if err := rows.Scan(&r.ID, &r.ReportType, &r.Title, &r.URL, &r.TPS, &r.MSPT, &r.CPUUsage, &r.MemoryUsage, &r.GCMetrics, &r.Summary, &r.RawOutput, &createdStr); err != nil {
+			continue
+		}
+		r.CreatedAt = parseSQLiteTime(createdStr)
+		reports = append(reports, r)
+	}
+	return reports, total, nil
+}
+
+func (s *SQLiteStore) GetProfilerReport(id int) (*ProfilerReport, error) {
+	query := `SELECT id, report_type, title, url, tps, mspt, cpu_usage, memory_usage, gc_metrics, summary, raw_output, created_at
+		FROM profiler_reports WHERE id = ?`
+	var r ProfilerReport
+	var createdStr string
+	err := s.db.QueryRow(query, id).Scan(&r.ID, &r.ReportType, &r.Title, &r.URL, &r.TPS, &r.MSPT, &r.CPUUsage, &r.MemoryUsage, &r.GCMetrics, &r.Summary, &r.RawOutput, &createdStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.CreatedAt = parseSQLiteTime(createdStr)
+	return &r, nil
+}
+
+func (s *SQLiteStore) DeleteProfilerReport(id int) error {
+	_, err := s.db.Exec("DELETE FROM profiler_reports WHERE id = ?", id)
+	return err
+}
+
+func (s *SQLiteStore) ClearProfilerReports() error {
+	_, err := s.db.Exec("DELETE FROM profiler_reports")
+	return err
+}
+
+
 

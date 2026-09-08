@@ -26,6 +26,7 @@ import (
 	"paperMC_backend/internal/crash"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/flags"
+	"paperMC_backend/internal/profiler"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -83,6 +84,7 @@ type Server struct {
 	nextListenerID    int
 	listeners         map[int]func(string)
 	crashListeners    []func(*database.CrashReport)
+	profilerListeners []func(*database.ProfilerReport)
 	isIntentionalStop bool
 	startTime         time.Time
 	history        []MetricPoint
@@ -336,6 +338,12 @@ func (s *Server) AddCrashListener(listener func(*database.CrashReport)) {
 	s.crashListeners = append(s.crashListeners, listener)
 }
 
+func (s *Server) AddProfilerListener(listener func(*database.ProfilerReport)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.profilerListeners = append(s.profilerListeners, listener)
+}
+
 func (s *Server) GetVitals() Vitals {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -474,6 +482,32 @@ func (s *Server) StreamLogs() {
 		if strings.Contains(text, "): You are not whitelisted on this server!") {
 			go s.handleRejection(text)
 		}
+
+		// Detect profiler links (Spark / Timings)
+		if profilerURL, rType, found := profiler.ExtractProfilerURL(cleanText); found {
+			title := "Spark Profiler Session"
+			if rType == "timings" {
+				title = "Aikar Timings Report"
+			}
+			report := &database.ProfilerReport{
+				ReportType: rType,
+				Title:      title,
+				URL:        profilerURL,
+				Summary:    fmt.Sprintf("Captured %s report from server console", rType),
+				RawOutput:  cleanText,
+				CreatedAt:  time.Now().UTC(),
+			}
+			if s.store != nil {
+				_ = s.store.RecordProfilerReport(report)
+			}
+			s.mu.RLock()
+			pListeners := make([]func(*database.ProfilerReport), len(s.profilerListeners))
+			copy(pListeners, s.profilerListeners)
+			s.mu.RUnlock()
+			for _, l := range pListeners {
+				l(report)
+			}
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -507,6 +541,14 @@ func (s *Server) SetReady(ready bool) {
 		s.readyTime = time.Time{}
 	}
 	s.mu.Unlock()
+}
+
+// SetRunningForTest sets server status to StatusRunning and assigns stdin for testing commands.
+func (s *Server) SetRunningForTest(w io.WriteCloser) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status = StatusRunning
+	s.stdin = w
 }
 
 // IsReady returns whether the server has finished its boot cycle.
