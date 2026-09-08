@@ -118,7 +118,15 @@
   - Action auditing hooks integrated into authentication, server lifecycle (start/stop/kill/command), player moderation, world management, configuration, flags tuning, backups, plugins, schedules, and updater.
   - Responsive dark glassmorphic React dashboard (`web/src/pages/AuditLogs.tsx`) with category filters, live search, relative time badges, status code indicators, pagination, and history purge modal.
   - Comprehensive unit test coverage with all packages maintaining $\ge 80\%$ test coverage.
-- [ ] **Task:** **Crash Analyst:** Basic heuristic analysis of stack traces.
+- [x] **Task:** **Crash Analyst & Heuristic Log Diagnostic Engine with Optional External AI Consultation**:
+  - Database migration v5 (`crash_reports` and `ai_settings` tables) tracking source, category, title, culprit, summary, recommendation, raw log, and AI settings with indexes.
+  - Pure-Go Heuristic Diagnostic Engine (`internal/crash/analyst.go`) classifying 8 failure categories (`OutOfMemory`, `PortConflict`, `WatchdogTimeout`, `PluginFailure`, `CorruptedChunk`, `JavaVersionMismatch`, `EulaUnaccepted`, `DiskFull`, and fallback `Unknown`) with regex-based culprit extraction and actionable recommendations.
+  - Disk scanner for `crash-reports/crash-*.txt` with automatic ingestion and newest-first sorting.
+  - Optional AI diagnostic client (`internal/ai/client.go`) with automated log sanitization (scrubbing filesystem paths, passwords/tokens, player UUIDs, and IPv4 addresses) supporting OpenAI-compatible endpoints (OpenAI, Ollama, Groq, DeepSeek) and Google Gemini API.
+  - Server process exit monitoring and crash event hook automatically capturing unexpected terminations, saving diagnostic reports, and broadcasting real-time `crash_alert` over WebSockets (`/ws`).
+  - REST API endpoints (`GET /api/crash`, `GET /api/crash/{id}`, `POST /api/crash/analyze`, `DELETE /api/crash`, `GET /api/crash/ai-config`, `POST /api/crash/ai-config`, `POST /api/crash/ai-explain`).
+  - Dark glassmorphic React UI dashboard (`web/src/pages/CrashAnalyst.tsx`) with category filters, live search, raw stack trace viewer, quick manual log analysis modal, AI settings modal, AI diagnostic consultation drawer, and real-time crash alert banner on the Console page (`web/src/pages/Console.tsx`).
+  - Strict $\ge 80\%$ statement test coverage maintained across all internal backend packages (`internal/ai` 84.6%, `internal/api` 81.5%, `internal/crash` 95.3%, `internal/database` 87.0%, `internal/minecraft` 92.7%).
 
 ---
 
@@ -132,7 +140,7 @@
 - [x] **Task:** High-contrast login page with branding and vector SVG favicon.
 
 ### Milestone 4.2: Feature Dashboards
-- [x] **Task:** **Console:** Live terminal with ANSI color rendering, command input, and auto-scroll.
+- [x] **Task:** **Console:** Live terminal with ANSI color rendering, command input, auto-scroll, and real-time crash alert warning banner.
 - [x] **Task:** **Player Manager:** Whitelist, Ban, Operator status, rejected connection history, real-time search, filter tabs, scroll container, and selectable pagination (10/25/50/100 per page).
 - [x] **Task:** **World Manager:** Active world spotlight card, dimension badges, disk size calculator, level.dat NBT metadata, world creation, cloning, and deletion.
 - [x] **Task:** **Updates & Versions:** Major release group selector, latest build detector, changelog viewer, and one-click upgrade button.
@@ -141,3 +149,5 @@
 - [x] **Task:** **Config Editor:** Visual editor for `server.properties` with categorized settings (General, Gameplay, Security, Performance, RCON), search filter, and raw editor toggle with comment preservation.
 - [x] **Task:** **Schedules & Logs Page:** Active schedules manager with visual presets, status toggle, Run Now trigger, and searchable execution audit log table.
 - [x] **Task:** **Plugins & Bedrock Bridge Dashboard:** Installed plugins inspector with enable/disable toggle, file upload, Modrinth marketplace browser, and dedicated Geyser/Floodgate Bedrock compatibility hub with 1-click update.
+- [x] **Task:** **Audit Logs Dashboard:** Chronological administrative activity audit log viewer with category badges, user filters, search, IP tracking, and history purge modal.
+- [x] **Task:** **Crash Analyst Dashboard:** Heuristic diagnostics incident viewer with category filter badges, root-cause summaries, step-by-step resolution advice, raw stack trace drawer, manual log dump analyzer, AI configuration modal, and interactive AI consultation assistant.

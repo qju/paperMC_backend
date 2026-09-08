@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"paperMC_backend/internal/crash"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/flags"
 
@@ -78,10 +79,12 @@ type Server struct {
 	OnlinePlayers map[string]Player
 
 	// Private fields
-	uuidCache      map[string]string
-	nextListenerID int
-	listeners      map[int]func(string)
-	startTime      time.Time
+	uuidCache         map[string]string
+	nextListenerID    int
+	listeners         map[int]func(string)
+	crashListeners    []func(*database.CrashReport)
+	isIntentionalStop bool
+	startTime         time.Time
 	history        []MetricPoint
 
 	store  database.Store
@@ -221,8 +224,8 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Kill() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if s.status == StatusStopped {
 		return errors.New("Server is already stopped")
@@ -232,6 +235,7 @@ func (s *Server) Kill() error {
 		return errors.New("fatal: cancel function is nil but server is not stopped")
 	}
 
+	s.isIntentionalStop = true
 	s.cancel()
 	return nil
 }
@@ -243,6 +247,7 @@ func (s *Server) Stop() error {
 		return errors.New("server is not running")
 	}
 	s.status = StatusStopping
+	s.isIntentionalStop = true
 	s.mu.Unlock()
 
 	if err := s.SendCommand("stop"); err != nil {
@@ -265,6 +270,8 @@ func (s *Server) monitorProcess() {
 	s.cmd.Wait()
 
 	s.mu.Lock()
+	wasIntentional := s.isIntentionalStop || (s.status == StatusStopping)
+	s.isIntentionalStop = false
 	s.status = StatusStopped
 	s.proc = nil
 	s.startTime = time.Time{}
@@ -283,6 +290,50 @@ func (s *Server) monitorProcess() {
 	if cancel != nil {
 		cancel()
 	}
+
+	if !wasIntentional {
+		recentLogs := s.GetHistory()
+		rawContent := strings.Join(recentLogs, "\n")
+		source := "runtime"
+
+		if crashFiles, scanErr := crash.ScanCrashReports(s.WorkDir); scanErr == nil && len(crashFiles) > 0 {
+			if time.Since(crashFiles[0].ModTime) < 2*time.Minute {
+				rawContent = crashFiles[0].Content
+				source = "crash_file"
+			}
+		}
+
+		analysis := crash.Analyze(rawContent)
+		report := &database.CrashReport{
+			Source:         source,
+			Category:       analysis.Category,
+			Title:          analysis.Title,
+			Culprit:        analysis.Culprit,
+			Summary:        analysis.Summary,
+			Recommendation: analysis.Recommendation,
+			RawLog:         rawContent,
+			CreatedAt:      time.Now().UTC(),
+		}
+
+		if s.store != nil {
+			_ = s.store.RecordCrashReport(report)
+		}
+
+		s.mu.RLock()
+		listeners := make([]func(*database.CrashReport), len(s.crashListeners))
+		copy(listeners, s.crashListeners)
+		s.mu.RUnlock()
+
+		for _, listener := range listeners {
+			listener(report)
+		}
+	}
+}
+
+func (s *Server) AddCrashListener(listener func(*database.CrashReport)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.crashListeners = append(s.crashListeners, listener)
 }
 
 func (s *Server) GetVitals() Vitals {

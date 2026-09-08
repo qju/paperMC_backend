@@ -402,4 +402,125 @@ func TestSQLiteStoreAuditLogs(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreCrashReportsAndAI(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_crash_ai.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize SQLite store: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Initially empty crash reports
+	reports, total, err := store.ListCrashReports(50, 0)
+	if err != nil {
+		t.Fatalf("ListCrashReports failed: %v", err)
+	}
+	if total != 0 || len(reports) != 0 {
+		t.Errorf("Expected 0 crash reports initially, got total=%d, len=%d", total, len(reports))
+	}
+
+	// 2. Insert crash reports
+	r1 := &CrashReport{
+		Source:         "runtime",
+		Category:       "OutOfMemory",
+		Title:          "Server ran out of memory (Java heap space)",
+		Culprit:        "JVM Heap Exhaustion",
+		Summary:        "The JVM crashed with java.lang.OutOfMemoryError",
+		Recommendation: "Increase allocated RAM in Server Flags to at least 4GB.",
+		RawLog:         "java.lang.OutOfMemoryError: Java heap space\n\tat net.minecraft.world...",
+	}
+	if err := store.RecordCrashReport(r1); err != nil {
+		t.Fatalf("RecordCrashReport r1 failed: %v", err)
+	}
+	if r1.ID <= 0 {
+		t.Errorf("Expected valid ID for r1, got %d", r1.ID)
+	}
+
+	r2 := &CrashReport{
+		Source:         "crash_file",
+		Category:       "PortConflict",
+		Title:          "Port already in use",
+		Culprit:        "Bind failed on 25565",
+		Summary:        "Failed to bind to port 25565",
+		Recommendation: "Check if another server is running or change server-port in server.properties.",
+		RawLog:         "FAILED TO BIND TO PORT! Address already in use: bind",
+	}
+	if err := store.RecordCrashReport(r2); err != nil {
+		t.Fatalf("RecordCrashReport r2 failed: %v", err)
+	}
+
+	// 3. List crash reports with pagination
+	list, total, err := store.ListCrashReports(10, 0)
+	if err != nil || total != 2 || len(list) != 2 {
+		t.Fatalf("Expected 2 crash reports, got total=%d, len=%d, err=%v", total, len(list), err)
+	}
+	if list[0].ID != r2.ID {
+		t.Errorf("Expected newest report first (r2 ID %d), got %d", r2.ID, list[0].ID)
+	}
+
+	// 4. Get individual crash report
+	fetched, err := store.GetCrashReport(r1.ID)
+	if err != nil {
+		t.Fatalf("GetCrashReport failed: %v", err)
+	}
+	if fetched == nil || fetched.Category != "OutOfMemory" {
+		t.Errorf("Fetched report unexpected: %+v", fetched)
+	}
+
+	// Non-existent crash report
+	nonExistent, err := store.GetCrashReport(99999)
+	if err != nil || nonExistent != nil {
+		t.Errorf("Expected nil report for non-existent ID, got err=%v, report=%v", err, nonExistent)
+	}
+
+	// 5. Delete individual crash report
+	if err := store.DeleteCrashReport(r1.ID); err != nil {
+		t.Fatalf("DeleteCrashReport failed: %v", err)
+	}
+	afterDel, totalDel, err := store.ListCrashReports(10, 0)
+	if err != nil || totalDel != 1 || len(afterDel) != 1 {
+		t.Fatalf("Expected 1 report after delete, got total=%d, len=%d", totalDel, len(afterDel))
+	}
+
+	// 6. Clear all crash reports
+	if err := store.ClearCrashReports(); err != nil {
+		t.Fatalf("ClearCrashReports failed: %v", err)
+	}
+	afterClear, totalClear, err := store.ListCrashReports(10, 0)
+	if err != nil || totalClear != 0 || len(afterClear) != 0 {
+		t.Fatalf("Expected 0 reports after clear, got total=%d, len=%d", totalClear, len(afterClear))
+	}
+
+	// 7. AI Settings default
+	aiSettings, err := store.GetAISettings()
+	if err != nil {
+		t.Fatalf("GetAISettings failed: %v", err)
+	}
+	if aiSettings.Provider != "openai" || aiSettings.Model != "gpt-4o-mini" || aiSettings.IsEnabled {
+		t.Errorf("Default AI settings mismatch: %+v", aiSettings)
+	}
+
+	// 8. Save updated AI Settings
+	aiSettings.Provider = "gemini"
+	aiSettings.APIKey = "test-api-key-123"
+	aiSettings.Model = "gemini-1.5-flash"
+	aiSettings.BaseURL = "https://custom.endpoint"
+	aiSettings.IsEnabled = true
+	if err := store.SaveAISettings(aiSettings); err != nil {
+		t.Fatalf("SaveAISettings failed: %v", err)
+	}
+
+	// 9. Fetch saved AI Settings
+	savedAI, err := store.GetAISettings()
+	if err != nil {
+		t.Fatalf("GetAISettings after save failed: %v", err)
+	}
+	if savedAI.Provider != "gemini" || savedAI.APIKey != "test-api-key-123" || savedAI.Model != "gemini-1.5-flash" || savedAI.BaseURL != "https://custom.endpoint" || !savedAI.IsEnabled {
+		t.Errorf("Saved AI settings mismatch: %+v", savedAI)
+	}
+}
+
+
 

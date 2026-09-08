@@ -96,5 +96,35 @@ type Store interface {
 	RecordAuditLog(log *AuditLog) error
 	ListAuditLogs(limit, offset int, actionFilter, userFilter string) ([]AuditLog, int, error)
 	ClearAuditLogs() error
+
+	// Crash Reports & AI Settings
+	RecordCrashReport(report *CrashReport) error
+	ListCrashReports(limit, offset int) ([]CrashReport, int, error)
+	GetCrashReport(id int) (*CrashReport, error)
+	DeleteCrashReport(id int) error
+	ClearCrashReports() error
+	GetAISettings() (*AISettings, error)
+	SaveAISettings(settings *AISettings) error
+}
+
+type CrashReport struct {
+	ID             int       `json:"id"`
+	Source         string    `json:"source"` // "runtime", "crash_file", "manual"
+	Category       string    `json:"category"`
+	Title          string    `json:"title"`
+	Culprit        string    `json:"culprit,omitempty"`
+	Summary        string    `json:"summary"`
+	Recommendation string    `json:"recommendation"`
+	RawLog         string    `json:"raw_log"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type AISettings struct {
+	Provider  string    `json:"provider"` // "openai", "gemini"
+	APIKey    string    `json:"api_key"`
+	Model     string    `json:"model"`
+	BaseURL   string    `json:"base_url"`
+	IsEnabled bool      `json:"is_enabled"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 

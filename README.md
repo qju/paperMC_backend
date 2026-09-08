@@ -215,6 +215,15 @@ journalctl -u lodestone -f
 - `GET /api/audit?page=...&limit=...&action=...&username=...`: Paginated retrieval of administrative action records with category filtering.
 - `DELETE /api/audit`: Purge historical audit log entries.
 
+### Crash Analyst & AI Diagnostic Endpoints
+- `GET /api/crash?limit=...&offset=...`: Retrieve recorded crash incidents with automatic disk crash report ingestion.
+- `GET /api/crash/{id}`: Fetch detailed diagnostic breakdown for a specific crash report.
+- `POST /api/crash/analyze`: Heuristically classify raw stack traces or recent server logs (`{"log": "...", "save": true|false}`).
+- `DELETE /api/crash?id=...`: Delete an individual report or purge all recorded crash reports (`?id=all`).
+- `GET /api/crash/ai-config`: Retrieve AI provider settings with masked API key.
+- `POST /api/crash/ai-config`: Save AI diagnostic configuration (supporting OpenAI, Gemini, Ollama, Groq, DeepSeek).
+- `POST /api/crash/ai-explain`: Request deep external LLM diagnostic consultation with automated sensitive log sanitization.
+
 ## Project Status
 
 - [x] Core Process Manager & Lifecycle Engine
@@ -231,6 +240,7 @@ journalctl -u lodestone -f
 - [x] Milestone 3.1: Smart Flags & Aikar's JVM Optimizer
 - [x] Milestone 3.2: Modrinth Plugin Manager & Geyser Bedrock Bridge
 - [x] Milestone 3.3: Administrative Action Audit Logs
+- [x] Milestone 3.3: Crash Analyst & Heuristic Log Diagnostic Engine with Optional AI Consultation
 
 
 ## License

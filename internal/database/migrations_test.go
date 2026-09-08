@@ -40,14 +40,16 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Errorf("Expected schema version %d after migrations, got %d", expectedVer, verAfter)
 	}
 
-	// Verify schedules, schedule_logs, server_flags, and audit_logs tables exist
-	var schedCount, logCount, flagCount, auditCount int
+	// Verify schedules, schedule_logs, server_flags, audit_logs, crash_reports, and ai_settings tables exist
+	var schedCount, logCount, flagCount, auditCount, crashCount, aiCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules';").Scan(&schedCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedule_logs';").Scan(&logCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='server_flags';").Scan(&flagCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='audit_logs';").Scan(&auditCount)
-	if schedCount != 1 || logCount != 1 || flagCount != 1 || auditCount != 1 {
-		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d", schedCount, logCount, flagCount, auditCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='crash_reports';").Scan(&crashCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ai_settings';").Scan(&aiCount)
+	if schedCount != 1 || logCount != 1 || flagCount != 1 || auditCount != 1 || crashCount != 1 || aiCount != 1 {
+		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d, crash=%d, ai=%d", schedCount, logCount, flagCount, auditCount, crashCount, aiCount)
 	}
 
 	// Re-running migrations must be idempotent

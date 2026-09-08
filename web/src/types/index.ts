@@ -206,3 +206,39 @@ export interface AuditLogsResponse {
     limit: number;
     total_pages: number;
 }
+
+export interface CrashReport {
+    id: number;
+    source: 'runtime' | 'crash_file' | 'manual' | string;
+    category: string;
+    title: string;
+    culprit?: string;
+    summary: string;
+    recommendation: string;
+    raw_log: string;
+    created_at: string;
+}
+
+export interface CrashReportsResponse {
+    reports: CrashReport[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface AISettings {
+    provider: 'openai' | 'gemini' | 'ollama' | 'groq' | 'deepseek' | string;
+    api_key: string;
+    has_api_key?: boolean;
+    model: string;
+    base_url: string;
+    is_enabled: boolean;
+    updated_at?: string;
+}
+
+export interface AIExplanationResponse {
+    explanation: string;
+    provider: string;
+    model: string;
+}
+

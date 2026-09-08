@@ -121,6 +121,43 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     5,
+		Description: "Add crash_reports and ai_settings tables for crash diagnostics",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS crash_reports (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				source TEXT NOT NULL DEFAULT 'runtime',
+				category TEXT NOT NULL,
+				title TEXT NOT NULL,
+				culprit TEXT DEFAULT '',
+				summary TEXT NOT NULL,
+				recommendation TEXT NOT NULL,
+				raw_log TEXT NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_crash_reports_category ON crash_reports(category);
+			CREATE INDEX IF NOT EXISTS idx_crash_reports_created_at ON crash_reports(created_at);
+
+			CREATE TABLE IF NOT EXISTS ai_settings (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				provider TEXT NOT NULL DEFAULT 'openai',
+				api_key TEXT NOT NULL DEFAULT '',
+				model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+				base_url TEXT NOT NULL DEFAULT '',
+				is_enabled INTEGER NOT NULL DEFAULT 0,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			INSERT OR IGNORE INTO ai_settings (id, provider, api_key, model, base_url, is_enabled)
+			VALUES (1, 'openai', '', 'gpt-4o-mini', '', 0);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

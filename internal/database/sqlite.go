@@ -439,3 +439,124 @@ func (s *SQLiteStore) ClearAuditLogs() error {
 	return err
 }
 
+func (s *SQLiteStore) RecordCrashReport(report *CrashReport) error {
+	query := `INSERT INTO crash_reports (source, category, title, culprit, summary, recommendation, raw_log, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	now := time.Now().UTC()
+	if report.CreatedAt.IsZero() {
+		report.CreatedAt = now
+	}
+	res, err := s.db.Exec(query, report.Source, report.Category, report.Title, report.Culprit, report.Summary, report.Recommendation, report.RawLog, report.CreatedAt.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		report.ID = int(id)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListCrashReports(limit, offset int) ([]CrashReport, int, error) {
+	var total int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM crash_reports").Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := `SELECT id, source, category, title, culprit, summary, recommendation, raw_log, created_at
+		FROM crash_reports ORDER BY id DESC LIMIT ? OFFSET ?`
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	reports := []CrashReport{}
+	for rows.Next() {
+		var r CrashReport
+		var createdStr string
+		if err := rows.Scan(&r.ID, &r.Source, &r.Category, &r.Title, &r.Culprit, &r.Summary, &r.Recommendation, &r.RawLog, &createdStr); err != nil {
+			continue
+		}
+		r.CreatedAt = parseSQLiteTime(createdStr)
+		reports = append(reports, r)
+	}
+	return reports, total, nil
+}
+
+func (s *SQLiteStore) GetCrashReport(id int) (*CrashReport, error) {
+	query := `SELECT id, source, category, title, culprit, summary, recommendation, raw_log, created_at
+		FROM crash_reports WHERE id = ?`
+	var r CrashReport
+	var createdStr string
+	err := s.db.QueryRow(query, id).Scan(&r.ID, &r.Source, &r.Category, &r.Title, &r.Culprit, &r.Summary, &r.Recommendation, &r.RawLog, &createdStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.CreatedAt = parseSQLiteTime(createdStr)
+	return &r, nil
+}
+
+func (s *SQLiteStore) DeleteCrashReport(id int) error {
+	_, err := s.db.Exec("DELETE FROM crash_reports WHERE id = ?", id)
+	return err
+}
+
+func (s *SQLiteStore) ClearCrashReports() error {
+	_, err := s.db.Exec("DELETE FROM crash_reports")
+	return err
+}
+
+func (s *SQLiteStore) GetAISettings() (*AISettings, error) {
+	query := `SELECT provider, api_key, model, base_url, is_enabled, updated_at FROM ai_settings WHERE id = 1`
+	var settings AISettings
+	var isEnabledInt int
+	var updatedStr string
+	err := s.db.QueryRow(query).Scan(&settings.Provider, &settings.APIKey, &settings.Model, &settings.BaseURL, &isEnabledInt, &updatedStr)
+	if err == sql.ErrNoRows {
+		return &AISettings{
+			Provider:  "openai",
+			Model:     "gpt-4o-mini",
+			IsEnabled: false,
+			UpdatedAt: time.Now().UTC(),
+		}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	settings.IsEnabled = isEnabledInt == 1
+	settings.UpdatedAt = parseSQLiteTime(updatedStr)
+	return &settings, nil
+}
+
+func (s *SQLiteStore) SaveAISettings(settings *AISettings) error {
+	isEnabledInt := 0
+	if settings.IsEnabled {
+		isEnabledInt = 1
+	}
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	query := `INSERT INTO ai_settings (id, provider, api_key, model, base_url, is_enabled, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			provider = excluded.provider,
+			api_key = excluded.api_key,
+			model = excluded.model,
+			base_url = excluded.base_url,
+			is_enabled = excluded.is_enabled,
+			updated_at = excluded.updated_at`
+	_, err := s.db.Exec(query, settings.Provider, settings.APIKey, settings.Model, settings.BaseURL, isEnabledInt, now)
+	return err
+}
+
+

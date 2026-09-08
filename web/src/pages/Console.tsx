@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useSocket } from '../hooks/useSocket';
-import { Send, Power, PowerOff } from 'lucide-react';
+import { Send, Power, PowerOff, AlertTriangle, X, ArrowRight } from 'lucide-react';
 import { LogLine } from '../components/LogLine';
 
 export default function Console() {
     // 1. Hook into our WebSocket logic
-    const { isConnected, logs, sendCommand } = useSocket();
+    const { isConnected, logs, sendCommand, crashAlert, clearCrashAlert } = useSocket();
 
     const [input, setInput] = useState('');
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -39,6 +40,39 @@ export default function Console() {
 
     return (
         <div className="flex flex-col h-full gap-4">
+            {/* --- CRASH ALERT BANNER --- */}
+            {crashAlert && (
+                <div className="flex items-center justify-between p-4 bg-red-950/70 border border-red-500/50 rounded-lg text-red-200 backdrop-blur-md">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="text-red-400 shrink-0" size={24} />
+                        <div>
+                            <p className="font-bold text-sm text-red-100">
+                                Server Crash Detected: <span className="font-mono">{crashAlert.title}</span>
+                            </p>
+                            <p className="text-xs text-red-300/80">
+                                Category: <span className="font-semibold text-red-200">{crashAlert.category}</span>
+                                {crashAlert.culprit && <span> • Culprit: <span className="text-amber-300">{crashAlert.culprit}</span></span>}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Link
+                            to="/crash"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded font-mono text-xs transition-colors shadow-sm"
+                        >
+                            View Diagnostics <ArrowRight size={14} />
+                        </Link>
+                        <button
+                            onClick={clearCrashAlert}
+                            className="p-1.5 hover:bg-red-900/50 rounded text-red-400 hover:text-white transition-colors"
+                            title="Dismiss Alert"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* --- HEADER: STATUS & POWER --- */}
             <div className="flex justify-between items-center bg-black/40 p-4 border border-white/10 rounded-lg backdrop-blur-sm">
 
