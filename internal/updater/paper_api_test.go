@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -170,6 +171,128 @@ func TestGetLatestBuild_MockServer(t *testing.T) {
 
 	if info.BuildID != 45 || info.FileName != "paper-26.2-45.jar" || info.SHA256 != "abcdef1234567890" {
 		t.Errorf("Unexpected build info: %+v", info)
+	}
+}
+
+func TestGetProjectVersions_EscapingAndErrors(t *testing.T) {
+	origURL := FillAPIBaseURL
+	defer func() { FillAPIBaseURL = origURL }()
+
+	t.Run("escapes project path and handles empty project default", func(t *testing.T) {
+		var seenURIs []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seenURIs = append(seenURIs, r.RequestURI)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"versions":{"1.21":["1.21.1"]}}`))
+		}))
+		defer server.Close()
+		FillAPIBaseURL = server.URL
+
+		if _, err := GetProjectVersions("paper/..?"); err != nil {
+			t.Fatalf("Expected escaped GetProjectVersions to succeed, got: %v", err)
+		}
+		if resp, err := GetProjectVersions(""); err != nil || resp.Project != DefaultProject {
+			t.Fatalf("Expected default project %q, got resp=%+v err=%v", DefaultProject, resp, err)
+		}
+		if len(seenURIs) != 2 || seenURIs[0] != "/projects/paper%2F..%3F" || seenURIs[1] != "/projects/paper" {
+			t.Errorf("Unexpected RequestURIs: %v", seenURIs)
+		}
+	})
+
+	t.Run("non-200 status and malformed json", func(t *testing.T) {
+		mode := "status"
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if mode == "status" {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte(`{not-json`))
+		}))
+		defer server.Close()
+		FillAPIBaseURL = server.URL
+
+		if _, err := GetProjectVersions("paper"); err == nil || !strings.Contains(err.Error(), "status 502") {
+			t.Errorf("Expected HTTP 502 error, got: %v", err)
+		}
+
+		mode = "json"
+		if _, err := GetProjectVersions("paper"); err == nil || !strings.Contains(err.Error(), "parse json") {
+			t.Errorf("Expected parse json error, got: %v", err)
+		}
+	})
+}
+
+func TestGetLatestBuild_EscapingAndErrors(t *testing.T) {
+	origURL := FillAPIBaseURL
+	defer func() { FillAPIBaseURL = origURL }()
+
+	if _, err := GetLatestBuild("paper", "   "); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+		t.Errorf("Expected empty version error, got: %v", err)
+	}
+
+	var seenURI string
+	responseCode := http.StatusOK
+	responseBody := `{"id":1,"channel":"STABLE","downloads":{}}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenURI = r.RequestURI
+		w.WriteHeader(responseCode)
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	defer server.Close()
+	FillAPIBaseURL = server.URL
+
+	// Missing server:default artifact + empty project default + version path escaping
+	if _, err := GetLatestBuild("", "1.21/../../bad"); err == nil || !strings.Contains(err.Error(), "no server download artifact") {
+		t.Errorf("Expected missing download artifact error, got: %v", err)
+	}
+	if seenURI != "/projects/paper/versions/1.21%2F..%2F..%2Fbad/builds/latest" {
+		t.Errorf("Expected escaped RequestURI, got %q", seenURI)
+	}
+
+	// 404 Not Found
+	responseCode = http.StatusNotFound
+	if _, err := GetLatestBuild("paper", "9.99"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Expected 404 not found error, got: %v", err)
+	}
+
+	// 500 Server Error
+	responseCode = http.StatusInternalServerError
+	if _, err := GetLatestBuild("paper", "1.21.4"); err == nil || !strings.Contains(err.Error(), "status 500") {
+		t.Errorf("Expected 500 error, got: %v", err)
+	}
+
+	// Malformed JSON
+	responseCode = http.StatusOK
+	responseBody = `{bad`
+	if _, err := GetLatestBuild("paper", "1.21.4"); err == nil || !strings.Contains(err.Error(), "parse build response") {
+		t.Errorf("Expected parse build error, got: %v", err)
+	}
+}
+
+func TestDownloadJar_ErrorCases(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fail" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("jar-bytes"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+
+	if err := DownloadJar(server.URL+"/fail", tmpDir, "out.jar", ""); err == nil || !strings.Contains(err.Error(), "HTTP status 503") {
+		t.Errorf("Expected HTTP 503 download error, got: %v", err)
+	}
+
+	if err := DownloadJar("://invalid-url", tmpDir, "out.jar", ""); err == nil || !strings.Contains(err.Error(), "build download request") {
+		t.Errorf("Expected invalid URL request error, got: %v", err)
+	}
+
+	missingDir := filepath.Join(tmpDir, "does_not_exist")
+	if err := DownloadJar(server.URL+"/ok", missingDir, "out.jar", ""); err == nil || !strings.Contains(err.Error(), "staging file") {
+		t.Errorf("Expected staging file creation error, got: %v", err)
 	}
 }
 

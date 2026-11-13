@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	MojangBaseURL = "https://api.mojang.com"
-	GeyserBaseURL = "https://api.geysermc.org"
+	MojangBaseURL    = "https://api.mojang.com"
+	GeyserBaseURL    = "https://api.geysermc.org"
+	mojangHTTPClient = &http.Client{Timeout: 10 * time.Second}
 )
 
 type MojangProfile struct {
@@ -22,11 +23,9 @@ type MojangProfile struct {
 }
 
 func GetUUID(name string) (string, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-
 	reqURL := fmt.Sprintf("%s/users/profiles/minecraft/%s", MojangBaseURL, url.PathEscape(name))
 
-	resp, err := client.Get(reqURL)
+	resp, err := mojangHTTPClient.Get(reqURL)
 	if err != nil {
 		return "", fmt.Errorf("connection failed: %w", err)
 	}
@@ -56,11 +55,9 @@ func GetXUID(gamerTag string) (string, error) {
 	// clean name tag if users type *Notch or .Notch
 	cleanTag := strings.TrimLeft(gamerTag, ".*")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-
 	reqURL := fmt.Sprintf("%s/v2/xbox/xuid/%s", GeyserBaseURL, url.PathEscape(cleanTag))
 
-	resp, err := client.Get(reqURL)
+	resp, err := mojangHTTPClient.Get(reqURL)
 	if err != nil {
 		return "", fmt.Errorf("connection failed: %w", err)
 	}

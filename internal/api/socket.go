@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"paperMC_backend/internal/auth"
@@ -62,10 +64,13 @@ type WSMessage struct {
 
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan WSMessage
-	register   chan *Client
-	unregister chan *Client
+	clients     map[*Client]bool
+	clientCount atomic.Int32
+	broadcast   chan WSMessage
+	register    chan *Client
+	unregister  chan *Client
+	stopCh      chan struct{}
+	stopOnce    sync.Once
 }
 
 func NewHub() *Hub {
@@ -74,18 +79,37 @@ func NewHub() *Hub {
 		broadcast:  make(chan WSMessage, sendBufferSize),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		stopCh:     make(chan struct{}),
 	}
+}
+
+// ClientCount returns the current number of active WebSocket clients.
+func (h *Hub) ClientCount() int {
+	return int(h.clientCount.Load())
+}
+
+// Stop terminates the hub's Run loop.
+func (h *Hub) Stop() {
+	h.stopOnce.Do(func() {
+		if h.stopCh != nil {
+			close(h.stopCh)
+		}
+	})
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.stopCh:
+			return
 		case client := <-h.register:
 			h.clients[client] = true
+			h.clientCount.Store(int32(len(h.clients)))
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
+				h.clientCount.Store(int32(len(h.clients)))
 			}
 		case message := <-h.broadcast:
 			for client := range h.clients {
@@ -94,6 +118,7 @@ func (h *Hub) Run() {
 				default:
 					close(client.send)
 					delete(h.clients, client)
+					h.clientCount.Store(int32(len(h.clients)))
 				}
 			}
 		}
@@ -101,8 +126,12 @@ func (h *Hub) Run() {
 }
 
 func (h *Hub) Broadcast(msg WSMessage) {
+	if h.ClientCount() == 0 {
+		return
+	}
 	select {
 	case h.broadcast <- msg:
+	case <-h.stopCh:
 	default:
 		log.Println("[Hub] Broadcast channel saturated, dropping message")
 	}

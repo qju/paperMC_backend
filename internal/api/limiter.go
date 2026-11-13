@@ -18,6 +18,8 @@ type LoginRateLimiter struct {
 	maxAttempts  int
 	window       time.Duration
 	lockDuration time.Duration
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 }
 
 // NewLoginRateLimiter creates a new thread-safe rate limiter.
@@ -27,6 +29,7 @@ func NewLoginRateLimiter(maxAttempts int, window, lockDuration time.Duration) *L
 		maxAttempts:  maxAttempts,
 		window:       window,
 		lockDuration: lockDuration,
+		stopCh:       make(chan struct{}),
 	}
 	go limiter.cleanupLoop()
 	return limiter
@@ -86,16 +89,31 @@ func (l *LoginRateLimiter) Reset(ip string) {
 	delete(l.attempts, ip)
 }
 
+// Stop stops the rate limiter's background cleanup goroutine.
+func (l *LoginRateLimiter) Stop() {
+	l.stopOnce.Do(func() {
+		if l.stopCh != nil {
+			close(l.stopCh)
+		}
+	})
+}
+
 func (l *LoginRateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
-	for range ticker.C {
-		l.mu.Lock()
-		now := time.Now()
-		for ip, entry := range l.attempts {
-			if now.After(entry.blockedTo) && now.Sub(entry.lastFail) > l.window {
-				delete(l.attempts, ip)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-l.stopCh:
+			return
+		case <-ticker.C:
+			l.mu.Lock()
+			now := time.Now()
+			for ip, entry := range l.attempts {
+				if now.After(entry.blockedTo) && now.Sub(entry.lastFail) > l.window {
+					delete(l.attempts, ip)
+				}
 			}
+			l.mu.Unlock()
 		}
-		l.mu.Unlock()
 	}
 }

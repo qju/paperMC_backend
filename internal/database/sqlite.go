@@ -19,20 +19,35 @@ func NewSQLiteStore(storePath string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Ping, make sure it is alive
+
+	// Single-connection pool avoids SQLITE_BUSY write contention across goroutines
+	// and keeps connection-scoped PRAGMAs consistent for the lifetime of the store.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 
-	// Enable Foreign Keys for this connection
-	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		return nil, err
+	pragmas := []string{
+		"PRAGMA foreign_keys = ON;",
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA busy_timeout = 5000;",
+	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 
 	store := &SQLiteStore{db: db}
 	// Migrate
 	if err := store.Migrate(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return store, nil

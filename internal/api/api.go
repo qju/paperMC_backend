@@ -20,15 +20,20 @@ import (
 )
 
 type Handler struct {
-	mc             *minecraft.Server
-	updateMu       sync.Mutex
-	store          database.Store
-	hub            *Hub
-	scheduler      *scheduler.Service
-	geyserClient   *plugins.GeyserClient
-	modrinthClient *plugins.ModrinthClient
-	aiClient       *ai.Client
-	loginLimiter   *LoginRateLimiter
+	mc                 *minecraft.Server
+	updateMu           sync.Mutex
+	store              database.Store
+	hub                *Hub
+	scheduler          *scheduler.Service
+	geyserClient       *plugins.GeyserClient
+	modrinthClient     *plugins.ModrinthClient
+	aiClient           *ai.Client
+	loginLimiter       *LoginRateLimiter
+	activeWorldMu      sync.Mutex
+	activeWorldCache   string
+	activeWorldModTime time.Time
+	stopCh             chan struct{}
+	stopOnce           sync.Once
 }
 
 type StatusResponse struct {
@@ -73,6 +78,7 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 		modrinthClient: plugins.NewModrinthClient(),
 		aiClient:       ai.NewClient(),
 		loginLimiter:   NewLoginRateLimiter(5, 10*time.Minute, 15*time.Minute),
+		stopCh:         make(chan struct{}),
 	}
 
 	if mcServer != nil {
@@ -88,27 +94,49 @@ func NewServerHandler(mcServer *minecraft.Server, store database.Store) *Handler
 			h.hub.Broadcast(WSMessage{Type: "profiler_event", Data: report})
 		})
 
-		// Broadcast live vitals over WebSockets every 1.5 seconds
+		// Broadcast live vitals over WebSockets every 1.5 seconds when clients listen or server runs
 		go func() {
 			ticker := time.NewTicker(1500 * time.Millisecond)
 			defer ticker.Stop()
-			for range ticker.C {
-				vitals := mcServer.GetVitals()
-				props, err := config.LoadProperties(mcServer.WorkDir)
-				if err == nil && props["level-name"] != "" {
-					vitals.ActiveWorld = props["level-name"]
-				} else {
-					vitals.ActiveWorld = "world"
+			for {
+				select {
+				case <-h.stopCh:
+					return
+				case <-ticker.C:
+					if h.hub.ClientCount() == 0 && mcServer.GetStatus() != minecraft.StatusRunning {
+						continue
+					}
+					vitals := mcServer.GetVitals()
+					vitals.ActiveWorld = h.getActiveWorld()
+					h.hub.Broadcast(WSMessage{
+						Type: "vitals",
+						Data: vitals,
+					})
 				}
-				h.hub.Broadcast(WSMessage{
-					Type: "vitals",
-					Data: vitals,
-				})
 			}
 		}()
 	}
 
 	return h
+}
+
+// Close shuts down background workers owned by the handler (vitals ticker, hub,
+// login rate limiter, and cron scheduler).
+func (h *Handler) Close() {
+	h.stopOnce.Do(func() {
+		if h.stopCh != nil {
+			close(h.stopCh)
+		}
+		if h.scheduler != nil {
+			h.scheduler.Stop()
+		}
+		if h.hub != nil {
+			h.hub.Stop()
+		}
+		if h.loginLimiter != nil {
+			h.loginLimiter.Stop()
+		}
+	})
 }
 
 func (h *Handler) StartScheduler() error {
@@ -157,14 +185,7 @@ func (h *Handler) BasicAuth(next http.Handler, user, pass string) http.Handler {
 
 func (h *Handler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	vitals := h.mc.GetVitals()
-
-	props, err := config.LoadProperties(h.mc.WorkDir)
-	if err == nil {
-		vitals.ActiveWorld = props["level-name"]
-	}
-	if vitals.ActiveWorld == "" {
-		vitals.ActiveWorld = "world" // fallback
-	}
+	vitals.ActiveWorld = h.getActiveWorld()
 
 	// 2. Send as JSON
 	w.Header().Set("Content-type", "application/json")
@@ -320,6 +341,7 @@ func (h *Handler) PostConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.invalidateActiveWorldCache()
 	h.recordAudit(r, "config.save", http.StatusOK, "Updated server.properties")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(StatusResponse{Status: "Config Saved"})
@@ -457,6 +479,15 @@ func (h *Handler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(stagingPath)
 			respondWithError(w, http.StatusInternalServerError, "Failed to stop server: "+err.Error())
 			return
+		}
+		if !h.mc.WaitForStop(30 * time.Second) {
+			h.mc.Broadcast("[System] Server did not stop gracefully within 30s during update, forcing termination...")
+			_ = h.mc.Kill()
+			if !h.mc.WaitForStop(5 * time.Second) {
+				_ = os.Remove(stagingPath)
+				respondWithError(w, http.StatusInternalServerError, "Failed to stop server cleanly before update")
+				return
+			}
 		}
 	}
 

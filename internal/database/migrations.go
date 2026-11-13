@@ -219,6 +219,24 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     8,
+		Description: "Add performance indexes for session token hash and rejected players lookup",
+		Up: func(tx *sql.Tx) error {
+			schemaSQL := `
+			CREATE TABLE IF NOT EXISTS rejected_players (
+				username TEXT PRIMARY KEY,
+				count INTEGER DEFAULT 1,
+				last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_hash ON user_sessions(refresh_token_hash);
+			CREATE INDEX IF NOT EXISTS idx_rejected_players_last_seen ON rejected_players(last_seen DESC);
+			`
+			_, err := tx.Exec(schemaSQL)
+			return err
+		},
+	},
 }
 
 // GetSchemaVersion reads the current user_version from SQLite PRAGMA.

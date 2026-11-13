@@ -55,6 +55,13 @@ func TestMigrationsFreshDatabase(t *testing.T) {
 		t.Errorf("Expected tables to exist: sched=%d, log=%d, flag=%d, audit=%d, crash=%d, ai=%d, profiler=%d, mfa=%d, sess=%d", schedCount, logCount, flagCount, auditCount, crashCount, aiCount, profilerCount, mfaCount, sessCount)
 	}
 
+	var idxRefreshCount, idxRejectedCount int
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_user_sessions_refresh_token_hash';").Scan(&idxRefreshCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_rejected_players_last_seen';").Scan(&idxRejectedCount)
+	if idxRefreshCount != 1 || idxRejectedCount != 1 {
+		t.Errorf("Expected migration v8 indexes to exist: idx_user_sessions_refresh_token_hash=%d, idx_rejected_players_last_seen=%d", idxRefreshCount, idxRejectedCount)
+	}
+
 	// Re-running migrations must be idempotent
 	if err := RunMigrations(db); err != nil {
 		t.Fatalf("Second RunMigrations call failed: %v", err)
