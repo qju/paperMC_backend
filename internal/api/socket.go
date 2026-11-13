@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"paperMC_backend/internal/auth"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -112,6 +114,7 @@ type Client struct {
 	conn    *websocket.Conn
 	send    chan WSMessage
 	handler *Handler
+	role    string
 }
 
 func (c *Client) readPump() {
@@ -143,6 +146,13 @@ func (c *Client) readPump() {
 		}
 
 		if msg.Type == "command" {
+			if c.role != "" && !strings.EqualFold(c.role, auth.RoleAdmin) {
+				select {
+				case c.send <- WSMessage{Type: "error", Data: "Forbidden: admin role required to execute commands"}:
+				default:
+				}
+				continue
+			}
 			cmdStr, _ := msg.Data.(string)
 			if cmdStr != "" {
 				if err := c.handler.mc.SendCommand(cmdStr); err != nil {
@@ -192,11 +202,20 @@ func (h *Handler) SocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	role := ""
+	if claims := auth.GetClaims(r); claims != nil {
+		role = strings.TrimSpace(claims.Role)
+		if role == "" {
+			role = auth.RoleViewer
+		}
+	}
+
 	client := &Client{
 		hub:     h.hub,
 		conn:    conn,
 		send:    make(chan WSMessage, sendBufferSize),
 		handler: h,
+		role:    role,
 	}
 
 	client.hub.register <- client

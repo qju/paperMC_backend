@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -23,9 +24,9 @@ type MojangProfile struct {
 func GetUUID(name string) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	url := fmt.Sprintf("%s/users/profiles/minecraft/%s", MojangBaseURL, name)
+	reqURL := fmt.Sprintf("%s/users/profiles/minecraft/%s", MojangBaseURL, url.PathEscape(name))
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(reqURL)
 	if err != nil {
 		return "", fmt.Errorf("connection failed: %w", err)
 	}
@@ -57,9 +58,9 @@ func GetXUID(gamerTag string) (string, error) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	url := fmt.Sprintf("%s/v2/xbox/xuid/%s", GeyserBaseURL, cleanTag)
+	reqURL := fmt.Sprintf("%s/v2/xbox/xuid/%s", GeyserBaseURL, url.PathEscape(cleanTag))
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(reqURL)
 	if err != nil {
 		return "", fmt.Errorf("connection failed: %w", err)
 	}

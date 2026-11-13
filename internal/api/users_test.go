@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"paperMC_backend/internal/auth"
 	"paperMC_backend/internal/database"
 	"paperMC_backend/internal/minecraft"
 )
@@ -346,6 +347,76 @@ func TestAdminReset2FA(t *testing.T) {
 	nilHandler.HandleAdminReset2FA(wNil, reqReset)
 	if wNil.Code != http.StatusInternalServerError {
 		t.Errorf("Expected 500 on nil store, got %d", wNil.Code)
+	}
+}
+
+func TestUsersAPI_PasswordPreservesSpaces(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_spaces.db")
+	store, err := database.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", store)
+	handler := NewServerHandler(mcServer, store)
+
+	// 1. Whitespace-only password is still rejected
+	reqBlank := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader([]byte(`{"username":"blankpass","password":"   ","role":"viewer"}`)))
+	wBlank := httptest.NewRecorder()
+	handler.HandleCreateUser(wBlank, reqBlank)
+	if wBlank.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for whitespace-only password, got %d", wBlank.Code)
+	}
+
+	// 2. Password with leading/trailing spaces is hashed verbatim on creation
+	spacedPass := "  spacedPass  "
+	createBody, _ := json.Marshal(CreateUserRequest{
+		Username: "spaceuser",
+		Password: spacedPass,
+		Role:     auth.RoleViewer,
+	})
+	reqCreate := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(createBody))
+	wCreate := httptest.NewRecorder()
+	handler.HandleCreateUser(wCreate, reqCreate)
+	if wCreate.Code != http.StatusCreated && wCreate.Code != http.StatusOK {
+		t.Fatalf("Expected 201/200 creating user with spaced password, got %d: %s", wCreate.Code, wCreate.Body.String())
+	}
+
+	u, err := store.GetUser("spaceuser")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+	if !auth.CheckPasswordHash(spacedPass, u.Password) {
+		t.Error("Expected stored hash to match password with leading/trailing spaces verbatim")
+	}
+	if auth.CheckPasswordHash("spacedPass", u.Password) {
+		t.Error("Expected stored hash NOT to match trimmed password")
+	}
+
+	// 3. Updating password preserves leading/trailing spaces verbatim
+	updatedPass := " newSecret "
+	updateBody, _ := json.Marshal(UpdatePasswordRequest{
+		Username: "spaceuser",
+		Password: updatedPass,
+	})
+	reqUpdate := httptest.NewRequest(http.MethodPut, "/api/users/password", bytes.NewReader(updateBody))
+	wUpdate := httptest.NewRecorder()
+	handler.HandleUpdatePassword(wUpdate, reqUpdate)
+	if wUpdate.Code != http.StatusOK {
+		t.Fatalf("Expected 200 updating password, got %d: %s", wUpdate.Code, wUpdate.Body.String())
+	}
+
+	uUpdated, err := store.GetUser("spaceuser")
+	if err != nil {
+		t.Fatalf("GetUser after update failed: %v", err)
+	}
+	if !auth.CheckPasswordHash(updatedPass, uUpdated.Password) {
+		t.Error("Expected updated hash to match password with leading/trailing spaces verbatim")
+	}
+	if auth.CheckPasswordHash("newSecret", uUpdated.Password) {
+		t.Error("Expected updated hash NOT to match trimmed password")
 	}
 }
 

@@ -14,6 +14,11 @@ import (
 
 var validWorldNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
 
+// IsValidWorldName reports whether name is a safe world directory name.
+func IsValidWorldName(name string) bool {
+	return validWorldNameRegex.MatchString(strings.TrimSpace(name))
+}
+
 // WorldInfo provides comprehensive diagnostics and metadata for a single world.
 type WorldInfo struct {
 	Name          string    `json:"name"`
@@ -187,7 +192,11 @@ func DuplicateWorld(workDir, sourceWorld, targetWorld string) error {
 	sourceWorld = strings.TrimSpace(sourceWorld)
 	targetWorld = strings.TrimSpace(targetWorld)
 
-	if !validWorldNameRegex.MatchString(targetWorld) {
+	if !IsValidWorldName(sourceWorld) {
+		return errors.New("invalid source world name: only alphanumeric characters, underscores, and hyphens are allowed")
+	}
+
+	if !IsValidWorldName(targetWorld) {
 		return errors.New("invalid target world name: only alphanumeric characters, underscores, and hyphens are allowed")
 	}
 

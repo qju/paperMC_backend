@@ -243,3 +243,47 @@ func TestSetActiveWorldRunningServer(t *testing.T) {
 	}
 }
 
+func TestWorldsAPI_PathTraversalValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	initialProps := []byte("level-name=world\n")
+	propsPath := filepath.Join(tempDir, "server.properties")
+	if err := os.WriteFile(propsPath, initialProps, 0644); err != nil {
+		t.Fatalf("Write server.properties failed: %v", err)
+	}
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+
+	for _, badWorld := range []string{"../etc", "world/sub", "bad name", "world\nrcon.password=hacked", ""} {
+		body, _ := json.Marshal(SetActiveWorldRequest{WorldName: badWorld})
+		req := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		handler.HandleSetActiveWorld(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 Bad Request for SetActiveWorld world_name %q, got %d: %s", badWorld, w.Code, w.Body.String())
+		}
+
+		reqCreate := httptest.NewRequest(http.MethodPost, "/api/worlds/create", bytes.NewReader(body))
+		wCreate := httptest.NewRecorder()
+		handler.HandleCreateWorld(wCreate, reqCreate)
+
+		if wCreate.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 Bad Request for CreateWorld world_name %q, got %d: %s", badWorld, wCreate.Code, wCreate.Body.String())
+		}
+	}
+
+	dupBody, _ := json.Marshal(DuplicateWorldRequest{SourceWorld: "../bad", TargetWorld: "good"})
+	reqDup := httptest.NewRequest(http.MethodPost, "/api/worlds/duplicate", bytes.NewReader(dupBody))
+	wDup := httptest.NewRecorder()
+	handler.HandleDuplicateWorld(wDup, reqDup)
+	if wDup.Code < 400 {
+		t.Errorf("Expected 4xx/5xx error duplicating invalid source world, got %d: %s", wDup.Code, wDup.Body.String())
+	}
+
+	gotProps, err := os.ReadFile(propsPath)
+	if err != nil || string(gotProps) != string(initialProps) {
+		t.Errorf("Expected server.properties to remain unchanged, got %q (err=%v)", string(gotProps), err)
+	}
+}
+

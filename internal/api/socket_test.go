@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"paperMC_backend/internal/auth"
 	"paperMC_backend/internal/minecraft"
 )
 
@@ -164,4 +167,99 @@ func TestSocketHandler_OriginSecurity(t *testing.T) {
 		t.Fatalf("Expected same origin connection to succeed, got: %v", err)
 	}
 	wsSame.Close()
+}
+
+func TestSocketHandler_CommandRBAC(t *testing.T) {
+	origExec := minecraft.ExecCommandContext
+	defer func() { minecraft.ExecCommandContext = origExec }()
+	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	tempDir := t.TempDir()
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	cmdEchoed := make(chan string, 10)
+	removeListener := mcServer.AddListener(func(line string) {
+		cmdEchoed <- line
+	})
+	defer removeListener()
+
+	if err := mcServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock server: %v", err)
+	}
+	defer func() {
+		_ = mcServer.Kill()
+		mcServer.WaitForStop(2 * time.Second)
+	}()
+
+	handler := NewServerHandler(mcServer, nil)
+
+	connectWithRole := func(role string) (*websocket.Conn, func()) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+			claims := &auth.Claims{Username: role + "_user", Role: role}
+			ctx := context.WithValue(r.Context(), auth.UserKey, claims)
+			handler.SocketHandler(w, r.WithContext(ctx))
+		})
+		srv := httptest.NewServer(mux)
+		wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			srv.Close()
+			t.Fatalf("Dial as %q failed: %v", role, err)
+		}
+		return ws, func() {
+			ws.Close()
+			srv.Close()
+		}
+	}
+
+	for _, deniedRole := range []string{auth.RoleViewer, auth.RoleOperator, ""} {
+		ws, cleanup := connectWithRole(deniedRole)
+		if err := ws.WriteJSON(WSMessage{Type: "command", Data: "say denied_" + deniedRole}); err != nil {
+			cleanup()
+			t.Fatalf("WriteJSON failed for %q: %v", deniedRole, err)
+		}
+
+		_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+		foundForbidden := false
+		for {
+			var msg WSMessage
+			if err := ws.ReadJSON(&msg); err != nil {
+				break
+			}
+			if msg.Type == "error" {
+				if text, ok := msg.Data.(string); ok && strings.Contains(text, "Forbidden") {
+					foundForbidden = true
+					break
+				}
+			}
+		}
+		cleanup()
+		if !foundForbidden {
+			t.Errorf("Expected Forbidden error over WS for role %q", deniedRole)
+		}
+	}
+
+	// Admin role is allowed to execute commands over WebSocket.
+	wsAdmin, cleanupAdmin := connectWithRole(auth.RoleAdmin)
+	defer cleanupAdmin()
+	if err := wsAdmin.WriteJSON(WSMessage{Type: "command", Data: "say admin_allowed"}); err != nil {
+		t.Fatalf("WriteJSON failed for admin: %v", err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case line := <-cmdEchoed:
+			if strings.Contains(line, "say denied_") {
+				t.Fatalf("Non-admin WS command executed on stdin: %q", line)
+			}
+			if strings.Contains(line, "say admin_allowed") {
+				return
+			}
+		case <-deadline:
+			t.Fatal("Timed out waiting for admin WS command execution")
+		}
+	}
 }

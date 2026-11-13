@@ -40,6 +40,13 @@ type LevelMetadata struct {
 }
 
 // ReadLevelDat parses a GZIP-compressed level.dat file and extracts world diagnostics.
+const (
+	// maxNBTUncompressedSize caps gzip-decompressed level.dat size at 16 MiB to prevent gzip bombs.
+	maxNBTUncompressedSize = 16 * 1024 * 1024
+	// maxNBTCollectionLength caps individual NBT array/list allocations against corrupted headers.
+	maxNBTCollectionLength = 1_000_000
+)
+
 func ReadLevelDat(filePath string) (*LevelMetadata, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -53,9 +60,12 @@ func ReadLevelDat(filePath string) (*LevelMetadata, error) {
 	}
 	defer gz.Close()
 
-	uncompressedData, err := io.ReadAll(gz)
+	uncompressedData, err := io.ReadAll(io.LimitReader(gz, maxNBTUncompressedSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress level.dat: %w", err)
+	}
+	if len(uncompressedData) > maxNBTUncompressedSize {
+		return nil, fmt.Errorf("level.dat exceeds maximum uncompressed size of %d bytes", maxNBTUncompressedSize)
 	}
 
 	meta := &LevelMetadata{
@@ -208,8 +218,11 @@ func readTagPayload(r *bytes.Reader, tagType byte) (interface{}, error) {
 		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 			return nil, err
 		}
+		if length < 0 || length > maxNBTCollectionLength || int(length) > r.Len() {
+			return nil, fmt.Errorf("invalid byte array length: %d", length)
+		}
 		buf := make([]byte, length)
-		_, err := r.Read(buf)
+		_, err := io.ReadFull(r, buf)
 		return buf, err
 	case tagString:
 		return readNBTString(r)
@@ -221,6 +234,12 @@ func readTagPayload(r *bytes.Reader, tagType byte) (interface{}, error) {
 		var length int32
 		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 			return nil, err
+		}
+		if length < 0 || length > maxNBTCollectionLength {
+			return nil, fmt.Errorf("invalid list length: %d", length)
+		}
+		if length > 0 && (elemType == tagEnd || int(length) > r.Len()) {
+			return nil, fmt.Errorf("invalid list length %d for element type %d", length, elemType)
 		}
 		list := make([]interface{}, 0, length)
 		for i := int32(0); i < length; i++ {
@@ -238,6 +257,9 @@ func readTagPayload(r *bytes.Reader, tagType byte) (interface{}, error) {
 		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 			return nil, err
 		}
+		if length < 0 || length > maxNBTCollectionLength || int64(length)*4 > int64(r.Len()) {
+			return nil, fmt.Errorf("invalid int array length: %d", length)
+		}
 		arr := make([]int32, length)
 		err := binary.Read(r, binary.BigEndian, &arr)
 		return arr, err
@@ -245,6 +267,9 @@ func readTagPayload(r *bytes.Reader, tagType byte) (interface{}, error) {
 		var length int32
 		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 			return nil, err
+		}
+		if length < 0 || length > maxNBTCollectionLength || int64(length)*8 > int64(r.Len()) {
+			return nil, fmt.Errorf("invalid long array length: %d", length)
 		}
 		arr := make([]int64, length)
 		err := binary.Read(r, binary.BigEndian, &arr)

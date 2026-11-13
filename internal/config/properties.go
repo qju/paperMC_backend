@@ -48,7 +48,24 @@ func LoadProperties(path string) (map[string]string, error) {
 	return props, nil
 }
 
+// validateProperties rejects property keys/values containing control newlines or malformed keys
+// so callers cannot inject extra entries into server.properties.
+func validateProperties(props map[string]string) error {
+	for k, v := range props {
+		if k == "" || strings.ContainsAny(k, "\r\n=:") {
+			return fmt.Errorf("invalid property key %q", k)
+		}
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("invalid property value for %q: contains newline characters", k)
+		}
+	}
+	return nil
+}
+
 func SavePropertiesSimple(path string, props map[string]string) error {
+	if err := validateProperties(props); err != nil {
+		return err
+	}
 
 	fullPath := filepath.Join(path, fileName)
 	// 1. Create file (truncate it if exists)
@@ -80,6 +97,9 @@ func SavePropertiesSimple(path string, props map[string]string) error {
 }
 
 func SaveProperties(path string, changes map[string]string) error {
+	if err := validateProperties(changes); err != nil {
+		return err
+	}
 	fullPath := filepath.Join(path, fileName)
 
 	// 1. Read the WHOLE original file

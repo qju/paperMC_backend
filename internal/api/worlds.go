@@ -67,8 +67,8 @@ func (h *Handler) HandleSetActiveWorld(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) applySetActiveWorld(w http.ResponseWriter, r *http.Request, req SetActiveWorldRequest) {
 	newWorld := strings.TrimSpace(req.WorldName)
-	if newWorld == "" {
-		respondWithError(w, http.StatusBadRequest, "World name cannot be empty")
+	if !minecraft.IsValidWorldName(newWorld) {
+		respondWithError(w, http.StatusBadRequest, "Invalid world name: only alphanumeric characters, underscores, and hyphens are allowed")
 		return
 	}
 

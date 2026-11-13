@@ -9,7 +9,7 @@
 
 - **Multi-Factor Authentication (2FA) & Session Hardening:** RFC 6238 TOTP two-factor authentication compatible with Google Authenticator, Microsoft Authenticator, 1Password, Authy, and Apple Passwords with real-time QR code mobile pairing and guided setup wizard, 8 single-use emergency recovery backup codes with file export, sliding-window brute-force rate limiter (5 attempts, 15m lockout), anti-enumeration timing equalization via dummy bcrypt checks, and dual-token session architecture (short-lived access tokens + auto-rotated refresh tokens in HttpOnly strict cookies).
 - **Java Process Isolation Engine & Sandboxing:** Unprivileged Linux process isolation via Bubblewrap (`bwrap`) with read-only root (`--ro-bind / /`), isolated private `/tmp`, dropped capabilities (`--cap-drop ALL`), unshared PID/IPC/UTS namespaces, and automatic masking of sensitive credentials and database files (`paper.db`, `.env`). Also supports POSIX DAC user separation (`ISOLATION_MODE=user`).
-- **Defensive Engineering & Vulnerability Hardening:** Zero known dependencies vulnerabilities (`govulncheck` clean, `npm audit` 0 vulnerabilities), WebSocket Cross-Site Hijacking (CSWSH) origin validation, and Zip Slip symlink traversal rejection in backup restoration.
+- **Defensive Engineering & Vulnerability Hardening:** Zero known dependencies vulnerabilities (`govulncheck` clean, `npm audit` 0 vulnerabilities), 3-tier Role-Based Access Control (`admin`, `operator`, `viewer`) across REST endpoints and WebSocket command execution, stdin/properties command-injection sanitization, Mojang/Geyser URL path escaping, world path-traversal validation, WebSocket Cross-Site Hijacking (CSWSH) origin validation, Zip Slip symlink traversal rejection in backup restoration, bounded GZIP/NBT allocation limits (`16 MiB` decompression cap, `1M` element cap), HTTP server timeouts, and bounded graceful shutdown.
 - **Multi-Core & Real-Time Vitals Monitoring:** Track per-core CPU load (Core 0 vs Core 1), JVM process vs host system utilization, JVM threads, memory RSS, disk storage headroom (<5GB alerts), live uptime counter, TPS/MSPT engine tick rate, and rolling time-series sparklines via real-time WebSocket push (`/ws`).
 - **Real-Time Console:** Bidirectional WebSocket streaming with centralized broadcast hub and ANSI terminal emulation.
 - **Player Management:** Whitelist, Ban, Operator controls, rejected connection intelligence, live search, and pagination.
@@ -149,6 +149,11 @@ journalctl -u lodestone -f
 - `POST /login`: Authenticate and obtain a JWT bearer token (`{"username": "...", "password": "..."}`).
 
 ### Protected Server & Console Endpoints (Requires `Authorization: Bearer <token>`)
+> **Role-Based Access Control (RBAC):** Protected routes enforce one of three roles from validated JWT claims:
+> - `viewer`: Read-only `GET` endpoints, self-service 2FA setup/status routes, and read-only WebSocket (`/ws`) console/vitals streaming.
+> - `operator`: `viewer` permissions plus server `/start`/`/stop`, player moderation, world management, backups, schedules, crash analysis, and profiler actions.
+> - `admin`: Full access, including WebSocket `"command"` submission, `POST /command`, `POST /kill`, `POST /config`, updates, user management (`/api/users`), plugins, smart flags, audit log clearing, and AI config updates.
+
 - `GET /status`: Server vitals (process status, CPU%, RAM RSS, player count, active world).
 - `GET /ws`: WebSocket stream for live console broadcast and command submission.
 - `POST /command`: Execute a console command (`{"command": "..."}`).
@@ -270,6 +275,7 @@ journalctl -u lodestone -f
 - [x] Milestone 3.3 (Audit): Administrative Action Audit Logs
 - [x] Milestone 3.3 (Crash Analyst): Crash Analyst & Heuristic Log Diagnostic Engine with Optional AI Consultation
 - [x] Milestone 5.0 (Security & Hardening): Vulnerability Remediation, MFA/TOTP 2FA, Anti-Enumeration & Rate-Limiting, Session Revocation, and Java Bubblewrap Process Isolation Sandbox
+- [x] Milestone 5.4 (RBAC & Lifecycle Hardening): Role-Based Access Control (admin/operator/viewer across REST & WebSocket), Stdin/Properties Injection Defense, NBT & World Path Hardening, and Bounded Graceful Shutdown
 
 ## License
 

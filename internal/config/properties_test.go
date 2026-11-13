@@ -258,3 +258,38 @@ func TestSaveProperties(t *testing.T) {
 		t.Errorf("Saved data mismatch.\nGot: %v\nWant: %v", loaded, input)
 	}
 }
+
+func TestSavePropertiesValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	propsPath := filepath.Join(tmpDir, fileName)
+	initialContent := []byte("difficulty=normal\n")
+	if err := os.WriteFile(propsPath, initialContent, 0644); err != nil {
+		t.Fatalf("Write initial server.properties failed: %v", err)
+	}
+
+	invalidInputs := []map[string]string{
+		{"motd": "Hello\nrcon.password=pwned"},
+		{"motd": "Hello\rspawn-protection=0"},
+		{"bad\nkey": "value"},
+		{"bad=key": "value"},
+		{"bad:key": "value"},
+		{"": "value"},
+	}
+
+	for _, bad := range invalidInputs {
+		if err := SaveProperties(tmpDir, bad); err == nil {
+			t.Errorf("Expected SaveProperties to reject %+v", bad)
+		}
+		if err := SavePropertiesSimple(tmpDir, bad); err == nil {
+			t.Errorf("Expected SavePropertiesSimple to reject %+v", bad)
+		}
+	}
+
+	afterContent, err := os.ReadFile(propsPath)
+	if err != nil {
+		t.Fatalf("Read properties after rejected saves failed: %v", err)
+	}
+	if string(afterContent) != string(initialContent) {
+		t.Errorf("Expected server.properties to remain untouched after failed validation, got %q", string(afterContent))
+	}
+}
