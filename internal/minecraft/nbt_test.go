@@ -317,3 +317,85 @@ func TestNBTTagPayloads(t *testing.T) {
 		t.Error("Expected error for unknown nbt tag, got nil")
 	}
 }
+
+func TestNBTBoundsAndGzipLimit(t *testing.T) {
+	t.Run("Rejects negative and oversized collection headers", func(t *testing.T) {
+		makeIntPayload := func(n int32) *bytes.Reader {
+			var b bytes.Buffer
+			_ = binary.Write(&b, binary.BigEndian, n)
+			return bytes.NewReader(b.Bytes())
+		}
+
+		// tagByteArray: negative & exceeding remaining bytes
+		if _, err := readTagPayload(makeIntPayload(-1), tagByteArray); err == nil {
+			t.Error("Expected error for negative byte array length")
+		}
+		if _, err := readTagPayload(makeIntPayload(1024), tagByteArray); err == nil {
+			t.Error("Expected error for byte array length exceeding remaining bytes")
+		}
+		if _, err := readTagPayload(makeIntPayload(maxNBTCollectionLength+1), tagByteArray); err == nil {
+			t.Error("Expected error for byte array exceeding maxNBTCollectionLength")
+		}
+
+		// tagList: negative, invalid element type with count > 0, and oversized
+		makeListPayload := func(elem byte, n int32) *bytes.Reader {
+			var b bytes.Buffer
+			b.WriteByte(elem)
+			_ = binary.Write(&b, binary.BigEndian, n)
+			return bytes.NewReader(b.Bytes())
+		}
+		if _, err := readTagPayload(makeListPayload(tagByte, -3), tagList); err == nil {
+			t.Error("Expected error for negative list length")
+		}
+		if _, err := readTagPayload(makeListPayload(tagEnd, 5), tagList); err == nil {
+			t.Error("Expected error for non-empty tagEnd list")
+		}
+		if _, err := readTagPayload(makeListPayload(tagByte, 500), tagList); err == nil {
+			t.Error("Expected error for list length exceeding remaining bytes")
+		}
+		if _, err := readTagPayload(makeListPayload(tagByte, maxNBTCollectionLength+1), tagList); err == nil {
+			t.Error("Expected error for list exceeding maxNBTCollectionLength")
+		}
+
+		// tagIntArray & tagLongArray
+		if _, err := readTagPayload(makeIntPayload(-1), tagIntArray); err == nil {
+			t.Error("Expected error for negative int array length")
+		}
+		if _, err := readTagPayload(makeIntPayload(10), tagIntArray); err == nil {
+			t.Error("Expected error for int array exceeding remaining bytes")
+		}
+		if _, err := readTagPayload(makeIntPayload(-1), tagLongArray); err == nil {
+			t.Error("Expected error for negative long array length")
+		}
+		if _, err := readTagPayload(makeIntPayload(10), tagLongArray); err == nil {
+			t.Error("Expected error for long array exceeding remaining bytes")
+		}
+	})
+
+	t.Run("Rejects decompressed level.dat exceeding maxNBTUncompressedSize", func(t *testing.T) {
+		tmpFile := filepath.Join(t.TempDir(), "bomb.dat")
+		f, err := os.Create(tmpFile)
+		if err != nil {
+			t.Fatalf("Create temp file failed: %v", err)
+		}
+		gz := gzip.NewWriter(f)
+		chunk := make([]byte, 64*1024)
+		written := 0
+		for written <= maxNBTUncompressedSize {
+			n, werr := gz.Write(chunk)
+			if werr != nil {
+				_ = gz.Close()
+				_ = f.Close()
+				t.Fatalf("Write gzip payload failed: %v", werr)
+			}
+			written += n
+		}
+		_ = gz.Close()
+		_ = f.Close()
+
+		_, err = ReadLevelDat(tmpFile)
+		if err == nil || !strings.Contains(err.Error(), "exceeds maximum uncompressed size") {
+			t.Errorf("Expected max size error for oversized gzip level.dat, got: %v", err)
+		}
+	})
+}

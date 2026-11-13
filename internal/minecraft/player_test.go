@@ -1,12 +1,16 @@
 package minecraft
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestPlayerFileOperations(t *testing.T) {
@@ -160,5 +164,85 @@ func TestBanUserDefaultReason(t *testing.T) {
 	err := server.BanUser("spammer", "")
 	if err == nil || err.Error() != "server is already stopped" {
 		t.Errorf("Expected stopped error, got: %v", err)
+	}
+}
+
+func TestPlayerNameValidationAndSanitization(t *testing.T) {
+	validNames := []string{"Steve", "Alex_123", "*BedrockUser", ".Floodgate_1", "a"}
+	for _, name := range validNames {
+		if err := ValidatePlayerName(name); err != nil {
+			t.Errorf("Expected %q to be valid username, got err: %v", name, err)
+		}
+	}
+
+	invalidNames := []string{
+		"",
+		".",
+		"..",
+		"../etc",
+		"Steve\nstop",
+		"Steve\rstop",
+		"Steve op",
+		"a/b",
+		"too_long_username_exceeding_32_characters_limit",
+	}
+	server := NewServer(t.TempDir(), "server.jar", "4G", nil)
+	for _, bad := range invalidNames {
+		if err := ValidatePlayerName(bad); err == nil {
+			t.Errorf("Expected ValidatePlayerName(%q) to fail", bad)
+		}
+		if err := server.WhiteListUser(bad); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("WhiteListUser(%q) expected invalid player username error, got: %v", bad, err)
+		}
+		if err := server.RemoveWhitelist(bad); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("RemoveWhitelist(%q) expected invalid player username error, got: %v", bad, err)
+		}
+		if err := server.BanUser(bad, "griefing"); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("BanUser(%q) expected invalid player username error, got: %v", bad, err)
+		}
+		if err := server.UnbanUser(bad); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("UnbanUser(%q) expected invalid player username error, got: %v", bad, err)
+		}
+		if err := server.OpUser(bad); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("OpUser(%q) expected invalid player username error, got: %v", bad, err)
+		}
+		if err := server.DeopUser(bad); err == nil || !strings.Contains(err.Error(), "invalid player username") {
+			t.Errorf("DeopUser(%q) expected invalid player username error, got: %v", bad, err)
+		}
+	}
+
+	// Verify BanUser strips newlines from reason so secondary commands cannot be injected
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	liveServer := NewServer(t.TempDir(), "server.jar", "2G", nil)
+	linesCh := make(chan string, 10)
+	removeListener := liveServer.AddListener(func(line string) {
+		linesCh <- line
+	})
+	defer removeListener()
+
+	if err := liveServer.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() {
+		_ = liveServer.Kill()
+		liveServer.WaitForStop(2 * time.Second)
+	}()
+
+	if err := liveServer.BanUser("Griefer", "bad\r\nstop"); err != nil {
+		t.Fatalf("BanUser failed: %v", err)
+	}
+
+	select {
+	case line := <-linesCh:
+		if line != "[MC] ban Griefer bad  stop" {
+			t.Errorf("Expected sanitized single-line ban command, got %q", line)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for echoed ban command")
 	}
 }

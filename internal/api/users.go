@@ -55,10 +55,10 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username := strings.TrimSpace(req.Username)
-	password := strings.TrimSpace(req.Password)
+	password := req.Password
 	role := strings.TrimSpace(req.Role)
 
-	if username == "" || password == "" {
+	if username == "" || strings.TrimSpace(password) == "" {
 		respondWithError(w, http.StatusBadRequest, "Username and password cannot be empty")
 		return
 	}
@@ -119,9 +119,9 @@ func (h *Handler) HandleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username := strings.TrimSpace(req.Username)
-	password := strings.TrimSpace(req.Password)
+	password := req.Password
 
-	if username == "" || password == "" {
+	if username == "" || strings.TrimSpace(password) == "" {
 		respondWithError(w, http.StatusBadRequest, "Username and new password cannot be empty")
 		return
 	}

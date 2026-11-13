@@ -3,6 +3,7 @@ package minecraft
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -122,6 +123,23 @@ func TestFormatBytes(t *testing.T) {
 		got := FormatBytes(tc.bytes)
 		if got != tc.want {
 			t.Errorf("FormatBytes(%d) = '%s', want '%s'", tc.bytes, got, tc.want)
+		}
+	}
+}
+
+func TestDuplicateWorld_RejectsSourceTraversal(t *testing.T) {
+	tempDir := t.TempDir()
+
+	if !IsValidWorldName("world-1_test") {
+		t.Error("Expected IsValidWorldName(\"world-1_test\") to be true")
+	}
+	for _, invalid := range []string{"", "../escape", "world/sub", "bad name", ".."} {
+		if IsValidWorldName(invalid) {
+			t.Errorf("Expected IsValidWorldName(%q) to be false", invalid)
+		}
+		err := DuplicateWorld(tempDir, invalid, "safe_target")
+		if err == nil || !strings.Contains(err.Error(), "invalid source world name") {
+			t.Errorf("DuplicateWorld(%q, \"safe_target\") expected invalid source world name error, got: %v", invalid, err)
 		}
 	}
 }

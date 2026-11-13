@@ -305,3 +305,62 @@ func TestJWTSecretManagement(t *testing.T) {
 	}
 }
 
+func TestRBACHelpers(t *testing.T) {
+	noClaimsReq := httptest.NewRequest(http.MethodGet, "/test", nil)
+	if HasRole(noClaimsReq, RoleViewer, RoleOperator, RoleAdmin) {
+		t.Error("Expected HasRole to return false when claims are missing")
+	}
+
+	viewerToken, err := GenerateToken("viewer_u", RoleViewer)
+	if err != nil {
+		t.Fatalf("GenerateToken viewer failed: %v", err)
+	}
+	operatorToken, err := GenerateToken("operator_u", RoleOperator)
+	if err != nil {
+		t.Fatalf("GenerateToken operator failed: %v", err)
+	}
+	adminToken, err := GenerateToken("admin_u", "ADMIN")
+	if err != nil {
+		t.Fatalf("GenerateToken admin failed: %v", err)
+	}
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !HasRole(r, RoleOperator, RoleAdmin, RoleViewer) {
+			t.Error("Expected HasRole to match authenticated claims role")
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Missing claims hits RequireRole -> 403 Forbidden
+	recMissing := httptest.NewRecorder()
+	RequireRole(RoleViewer)(okHandler).ServeHTTP(recMissing, noClaimsReq)
+	if recMissing.Code != http.StatusForbidden {
+		t.Errorf("Expected 403 for missing claims, got %d", recMissing.Code)
+	}
+
+	cases := []struct {
+		name         string
+		token        string
+		allowedRoles []string
+		wantCode     int
+	}{
+		{"viewer forbidden on operator route", viewerToken, []string{RoleOperator, RoleAdmin}, http.StatusForbidden},
+		{"viewer allowed on viewer route", viewerToken, []string{RoleViewer, RoleOperator, RoleAdmin}, http.StatusOK},
+		{"operator forbidden on admin route", operatorToken, []string{RoleAdmin}, http.StatusForbidden},
+		{"operator allowed on operator route", operatorToken, []string{RoleOperator, RoleAdmin}, http.StatusOK},
+		{"admin case-insensitive allowed on admin route", adminToken, []string{RoleAdmin}, http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.Header.Set("Authorization", "Bearer "+tc.token)
+			rec := httptest.NewRecorder()
+			AuthMiddleware(RequireRole(tc.allowedRoles...)(okHandler)).ServeHTTP(rec, req)
+			if rec.Code != tc.wantCode {
+				t.Errorf("got status %d, want %d (body: %s)", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+

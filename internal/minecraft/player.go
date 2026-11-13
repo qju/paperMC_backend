@@ -2,9 +2,11 @@ package minecraft
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -56,7 +58,23 @@ func (s *Server) readPlayerFile(filename string) ([]Player, error) {
 	return players, nil
 }
 
+// validPlayerNameRegex matches valid Minecraft Java Edition usernames and Bedrock/Floodgate
+// prefixed gamertags without allowing whitespace or command-injection characters.
+var validPlayerNameRegex = regexp.MustCompile(`^[.*]?[a-zA-Z0-9_]{1,32}$`)
+
+// ValidatePlayerName ensures a player username contains only safe characters.
+func ValidatePlayerName(username string) error {
+	if !validPlayerNameRegex.MatchString(username) {
+		return errors.New("invalid player username")
+	}
+	return nil
+}
+
 func (s *Server) WhiteListUser(username string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
+
 	uuid, err := GetUUID(username)
 
 	if err == nil {
@@ -81,6 +99,9 @@ func (s *Server) WhiteListUser(username string) error {
 	// Failure: Neither API found a user
 }
 func (s *Server) RemoveWhitelist(username string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
 	if err := s.SendCommand("whitelist remove " + username); err != nil {
 		return err
 	}
@@ -88,6 +109,10 @@ func (s *Server) RemoveWhitelist(username string) error {
 }
 
 func (s *Server) BanUser(username string, reason string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
+	reason = strings.NewReplacer("\r", " ", "\n", " ").Replace(reason)
 	if reason == "" {
 		reason = "Banned by Operator"
 	}
@@ -95,13 +120,22 @@ func (s *Server) BanUser(username string, reason string) error {
 }
 
 func (s *Server) UnbanUser(username string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
 	return s.SendCommand("pardon " + username)
 }
 
 func (s *Server) OpUser(username string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
 	return s.SendCommand("op " + username)
 }
 
 func (s *Server) DeopUser(username string) error {
+	if err := ValidatePlayerName(username); err != nil {
+		return err
+	}
 	return s.SendCommand("deop " + username)
 }

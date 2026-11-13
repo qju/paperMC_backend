@@ -86,11 +86,45 @@ func GetClaims(r *http.Request) *Claims {
 	return nil
 }
 
+const (
+	RoleAdmin    = "admin"
+	RoleOperator = "operator"
+	RoleViewer   = "viewer"
+)
+
 // GetUsername retrieves the authenticated username from request context, or empty string.
 func GetUsername(r *http.Request) string {
 	if claims := GetClaims(r); claims != nil {
 		return claims.Username
 	}
 	return ""
+}
+
+// HasRole checks if the authenticated request claims match any of allowedRoles.
+func HasRole(r *http.Request, allowedRoles ...string) bool {
+	claims := GetClaims(r)
+	if claims == nil {
+		return false
+	}
+	role := strings.ToLower(strings.TrimSpace(claims.Role))
+	for _, allowed := range allowedRoles {
+		if role == strings.ToLower(allowed) {
+			return true
+		}
+	}
+	return false
+}
+
+// RequireRole enforces that the authenticated user has one of allowedRoles.
+func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !HasRole(r, allowedRoles...) {
+				http.Error(w, "Forbidden: Insufficient permissions", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 

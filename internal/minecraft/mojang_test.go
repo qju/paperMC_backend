@@ -185,3 +185,48 @@ func TestGetXUID(t *testing.T) {
 		}
 	})
 }
+
+func TestGetUUIDAndGetXUID_URLEscaping(t *testing.T) {
+	origMojang := MojangBaseURL
+	origGeyser := GeyserBaseURL
+	defer func() {
+		MojangBaseURL = origMojang
+		GeyserBaseURL = origGeyser
+	}()
+
+	var mojangReqURI string
+	var mojangRawQuery string
+	mockMojang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mojangReqURI = r.RequestURI
+		mojangRawQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"name":"escaped","id":"uuid-escaped"}`))
+	}))
+	defer mockMojang.Close()
+	MojangBaseURL = mockMojang.URL
+
+	if _, err := GetUUID("evil/path?admin=true"); err != nil {
+		t.Fatalf("Unexpected GetUUID error: %v", err)
+	}
+	if mojangRawQuery != "" || !strings.Contains(mojangReqURI, "%2F") || !strings.Contains(mojangReqURI, "%3F") {
+		t.Errorf("Expected Mojang lookup to escape path/query characters, got RequestURI=%q RawQuery=%q", mojangReqURI, mojangRawQuery)
+	}
+
+	var geyserReqURI string
+	var geyserRawQuery string
+	mockGeyser := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		geyserReqURI = r.RequestURI
+		geyserRawQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"xuid":123456}`))
+	}))
+	defer mockGeyser.Close()
+	GeyserBaseURL = mockGeyser.URL
+
+	if _, err := GetXUID(".evil/tag?x=1"); err != nil {
+		t.Fatalf("Unexpected GetXUID error: %v", err)
+	}
+	if geyserRawQuery != "" || !strings.Contains(geyserReqURI, "%2F") || !strings.Contains(geyserReqURI, "%3F") {
+		t.Errorf("Expected Geyser lookup to escape path/query characters, got RequestURI=%q RawQuery=%q", geyserReqURI, geyserRawQuery)
+	}
+}

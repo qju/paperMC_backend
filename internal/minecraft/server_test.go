@@ -963,5 +963,96 @@ func TestServerProfilerDetectionAndListener(t *testing.T) {
 	}
 }
 
+func TestSendCommandRejectsNewlines(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "cat")
+	}
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+	if err := server.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() {
+		_ = server.Kill()
+		server.WaitForStop(2 * time.Second)
+	}()
+
+	for _, badCmd := range []string{"say hello\nstop", "say hello\rstop", "\nop admin"} {
+		if err := server.SendCommand(badCmd); err == nil || !strings.Contains(err.Error(), "newline") {
+			t.Errorf("Expected newline rejection error for %q, got: %v", badCmd, err)
+		}
+	}
+
+	if err := server.SendCommand("say clean_command"); err != nil {
+		t.Errorf("Expected clean single-line command to succeed, got: %v", err)
+	}
+}
+
+func TestWaitForStop_StderrAndUUIDCacheReset(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	// Process emits one line to stderr immediately and waits on stdin until killed.
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "echo 'stderr_diagnostic_line' >&2; read dummy")
+	}
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	if !server.WaitForStop(10 * time.Millisecond) {
+		t.Fatal("Expected WaitForStop on stopped server to return true immediately")
+	}
+
+	stderrSeen := make(chan struct{}, 1)
+	removeListener := server.AddListener(func(line string) {
+		if strings.Contains(line, "stderr_diagnostic_line") {
+			select {
+			case stderrSeen <- struct{}{}:
+			default:
+			}
+		}
+	})
+	defer removeListener()
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	select {
+	case <-stderrSeen:
+	case <-time.After(2 * time.Second):
+		_ = server.Kill()
+		t.Fatal("Timed out waiting for stderr output to be captured via Stdout pipe")
+	}
+
+	server.mu.Lock()
+	server.uuidCache["StalePlayer"] = "11111111-1111-1111-1111-111111111111"
+	server.mu.Unlock()
+
+	if server.WaitForStop(15 * time.Millisecond) {
+		_ = server.Kill()
+		t.Fatal("Expected WaitForStop to return false before running process stops")
+	}
+
+	if err := server.Kill(); err != nil {
+		t.Fatalf("Kill failed: %v", err)
+	}
+	if !server.WaitForStop(2 * time.Second) {
+		t.Fatal("Expected WaitForStop to return true after Kill")
+	}
+
+	server.mu.RLock()
+	cacheLen := len(server.uuidCache)
+	server.mu.RUnlock()
+	if cacheLen != 0 {
+		t.Errorf("Expected uuidCache to be cleared after process stop, got %d entries", cacheLen)
+	}
+}
+
 
 

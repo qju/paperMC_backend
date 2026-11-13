@@ -95,8 +95,9 @@ type Server struct {
 	status Status
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-	proc   *process.Process
-	cancel context.CancelFunc
+	proc      *process.Process
+	cancel    context.CancelFunc
+	stoppedCh chan struct{}
 
 	// Dynamic TPS & MSPT tracking
 	currentTPS          float64
@@ -210,12 +211,14 @@ func (s *Server) Start() error {
 		return errOut
 	}
 	s.stdout = pipeOut
+	s.cmd.Stderr = s.cmd.Stdout
 
 	if err := s.cmd.Start(); err != nil {
 		s.mu.Unlock()
 		return err
 	}
 
+	s.stoppedCh = make(chan struct{})
 	s.status = StatusRunning
 	s.startTime = time.Now()
 	s.currentTPS = 20.0
@@ -285,11 +288,16 @@ func (s *Server) monitorProcess() {
 	s.proc = nil
 	s.startTime = time.Time{}
 	s.OnlinePlayers = make(map[string]Player)
+	s.uuidCache = make(map[string]string)
 	s.currentTPS = 0
 	s.currentMSPT = 0
 	atomic.StoreInt32(&s.internalPollPending, 0)
 	s.activeArgs = nil
 	s.readyTime = time.Time{}
+	if s.stoppedCh != nil {
+		close(s.stoppedCh)
+		s.stoppedCh = nil
+	}
 	cancel := s.cancel
 	s.cancel = nil
 	s.mu.Unlock()
@@ -815,6 +823,10 @@ func (s *Server) GetHistory() []string {
 }
 
 func (s *Server) SendCommand(cmd string) error {
+	if strings.ContainsAny(cmd, "\r\n") {
+		return errors.New("command cannot contain newline characters")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -828,6 +840,32 @@ func (s *Server) SendCommand(cmd string) error {
 
 	_, err := fmt.Fprintln(s.stdin, cmd)
 	return err
+}
+
+// WaitForStop blocks until the running server process exits or timeout elapses.
+// It returns true if the server is stopped, or false if the timeout expired.
+func (s *Server) WaitForStop(timeout time.Duration) bool {
+	s.mu.RLock()
+	if s.status == StatusStopped {
+		s.mu.RUnlock()
+		return true
+	}
+	ch := s.stoppedCh
+	s.mu.RUnlock()
+
+	if ch == nil {
+		return s.GetStatus() == StatusStopped
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-ch:
+		return true
+	case <-timer.C:
+		return s.GetStatus() == StatusStopped
+	}
 }
 
 func (s *Server) GetStatus() Status {
