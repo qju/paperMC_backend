@@ -189,3 +189,10 @@
 - [x] **Task:** Implement POSIX DAC user credential separation via `SysProcAttr.Credential` (`ISOLATION_MODE=user`).
 - [x] **Task:** Harden systemd service configuration (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=yes`, `PrivateTmp=yes`, `RestrictSUIDSGID=yes`).
 - [x] **Task:** Maintain strict $\ge 80\%$ statement test coverage across all internal packages with deterministic pass.
+
+### Milestone 5.4: RBAC Enforcement, Input Sanitization, Parser Bounds & Lifecycle Hardening
+- [x] **Task:** Enforce 3-tier Role-Based Access Control (`admin`, `operator`, `viewer`) across all protected REST routes (`RequireRole` middleware in `internal/auth/middleware.go` and `registerProtectedRoutes` in `cmd/server/main.go`) and fail-closed WebSocket command execution checks (`internal/api/socket.go`).
+- [x] **Task:** Sanitize player moderation commands (`ValidatePlayerName`, newline stripping in `BanUser`), reject multi-line stdin commands in `SendCommand`, escape Mojang/Geyser API path lookups via `url.PathEscape`, and reject newline/control characters in `server.properties` writes.
+- [x] **Task:** Validate source and active world directory names with `IsValidWorldName` across world duplication and world-switching flows (`internal/minecraft/world.go`, `internal/api/worlds.go`).
+- [x] **Task:** Bound NBT `ReadLevelDat` gzip decompression (`16 MiB`) and collection allocation headers (`1M` elements and remaining-byte bounds in `internal/minecraft/nbt.go`), and preserve leading/trailing spaces on user passwords at creation/update (`internal/api/users.go`).
+- [x] **Task:** Capture process `stderr` alongside `stdout`, clear stale `uuidCache` entries on server stop, configure HTTP server timeouts (`ReadHeaderTimeout`, `ReadTimeout`, `IdleTimeout`), and wait deterministically on `mcServer.WaitForStop` during graceful shutdown.
