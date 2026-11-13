@@ -263,3 +263,81 @@ func TestSocketHandler_CommandRBAC(t *testing.T) {
 		}
 	}
 }
+
+func TestHubClientCountZeroSkipAndStop(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+
+	if count := hub.ClientCount(); count != 0 {
+		t.Fatalf("Expected initial ClientCount=0, got %d", count)
+	}
+
+	// Broadcasting with 0 clients should be a fast no-op and not block even before clients register.
+	hub.Broadcast(WSMessage{Type: "log", Data: "ignored_zero_clients"})
+
+	client := &Client{
+		hub:  hub,
+		send: make(chan WSMessage, 4),
+	}
+	hub.register <- client
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for hub.ClientCount() != 1 {
+		if time.Now().After(deadline) {
+			hub.Stop()
+			t.Fatal("Timed out waiting for Hub ClientCount to reach 1")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	hub.Broadcast(WSMessage{Type: "log", Data: "delivered_with_client"})
+	select {
+	case msg := <-client.send:
+		if msg.Data != "delivered_with_client" {
+			t.Errorf("Expected 'delivered_with_client', got %v", msg.Data)
+		}
+	case <-time.After(500 * time.Millisecond):
+		hub.Stop()
+		t.Fatal("Timed out waiting for Broadcast to registered client")
+	}
+
+	hub.unregister <- client
+	deadline = time.Now().Add(500 * time.Millisecond)
+	for hub.ClientCount() != 0 {
+		if time.Now().After(deadline) {
+			hub.Stop()
+			t.Fatal("Timed out waiting for Hub ClientCount to return to 0")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	hub.Stop()
+	hub.Stop() // Idempotent stop
+
+	// Test stopping a hub while a client is still registered does not block subsequent Broadcast calls.
+	hub2 := NewHub()
+	go hub2.Run()
+	client2 := &Client{hub: hub2, send: make(chan WSMessage, 1)}
+	hub2.register <- client2
+
+	deadline = time.Now().Add(500 * time.Millisecond)
+	for hub2.ClientCount() != 1 {
+		if time.Now().After(deadline) {
+			hub2.Stop()
+			t.Fatal("Timed out waiting for hub2 ClientCount to reach 1")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	hub2.Stop()
+	done := make(chan struct{})
+	go func() {
+		hub2.Broadcast(WSMessage{Type: "log", Data: "after_stop"})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Hub.Broadcast blocked after Hub.Stop()")
+	}
+}

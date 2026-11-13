@@ -862,6 +862,34 @@ func TestUserMFAGovernanceStore(t *testing.T) {
 	}
 }
 
+func TestSQLitePragmasAndPoolConfig(t *testing.T) {
+	store, err := NewSQLiteStore(t.TempDir() + "/wal_pragmas.db")
+	if err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+	defer store.Close()
+
+	if maxOpen := store.db.Stats().MaxOpenConnections; maxOpen != 1 {
+		t.Errorf("Expected MaxOpenConnections=1, got %d", maxOpen)
+	}
+
+	var journalMode string
+	if err := store.db.QueryRow("PRAGMA journal_mode;").Scan(&journalMode); err != nil {
+		t.Fatalf("Failed querying journal_mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Errorf("Expected PRAGMA journal_mode=wal, got %q", journalMode)
+	}
+
+	var foreignKeys int
+	if err := store.db.QueryRow("PRAGMA foreign_keys;").Scan(&foreignKeys); err != nil {
+		t.Fatalf("Failed querying foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Errorf("Expected PRAGMA foreign_keys=1, got %d", foreignKeys)
+	}
+}
+
 
 
 

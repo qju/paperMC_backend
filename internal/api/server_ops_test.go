@@ -502,4 +502,208 @@ func TestUpdaterAPIExecution(t *testing.T) {
 	}
 }
 
+func TestHandlerClose_ActiveWorldCacheAndRunningUpdate(t *testing.T) {
+	origExec := minecraft.ExecCommandContext
+	defer func() { minecraft.ExecCommandContext = origExec }()
+
+	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", `while IFS= read -r line; do [ "$line" = "stop" ] && exit 0; done`)
+	}
+
+	tempDir := t.TempDir()
+	store, err := database.NewSQLiteStore(filepath.Join(tempDir, "ops_running.db"))
+	if err != nil {
+		t.Fatalf("Failed to init store: %v", err)
+	}
+	defer store.Close()
+
+	propsPath := filepath.Join(tempDir, "server.properties")
+	if err := os.WriteFile(propsPath, []byte("level-name=alpha_world\n"), 0644); err != nil {
+		t.Fatalf("Failed writing server.properties: %v", err)
+	}
+	jarPath := filepath.Join(tempDir, "server.jar")
+	oldJar := []byte("old-server-jar-bytes")
+	if err := os.WriteFile(jarPath, oldJar, 0644); err != nil {
+		t.Fatalf("Failed writing initial server.jar: %v", err)
+	}
+
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", store)
+	handler := NewServerHandler(mcServer, store)
+	defer func() {
+		handler.Close()
+		handler.Close() // Verify idempotent Close()
+	}()
+
+	// 1. Verify active world lookup + repeated modtime cache hit
+	for i := 0; i < 2; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/status", nil)
+		handler.HandleStatus(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("HandleStatus attempt %d returned %d", i+1, w.Code)
+		}
+		var vitals struct {
+			ActiveWorld string `json:"active_world"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&vitals); err != nil {
+			t.Fatalf("Decode status failed: %v", err)
+		}
+		if vitals.ActiveWorld != "alpha_world" {
+			t.Errorf("Attempt %d: expected active_world 'alpha_world', got %q", i+1, vitals.ActiveWorld)
+		}
+	}
+
+	// 2. Verify PostConfig invalidates active world cache
+	cfgBody := bytes.NewBufferString(`{"level-name":"beta_world"}`)
+	reqCfg := httptest.NewRequest(http.MethodPost, "/config", cfgBody)
+	wCfg := httptest.NewRecorder()
+	handler.PostConfig(wCfg, reqCfg)
+	if wCfg.Code != http.StatusOK {
+		t.Fatalf("PostConfig failed: %d %s", wCfg.Code, wCfg.Body.String())
+	}
+
+	wAfterCfg := httptest.NewRecorder()
+	handler.HandleStatus(wAfterCfg, httptest.NewRequest(http.MethodGet, "/status", nil))
+	var vitalsAfterCfg struct {
+		ActiveWorld string `json:"active_world"`
+	}
+	_ = json.NewDecoder(wAfterCfg.Body).Decode(&vitalsAfterCfg)
+	if vitalsAfterCfg.ActiveWorld != "beta_world" {
+		t.Errorf("Expected invalidated cache to reflect 'beta_world', got %q", vitalsAfterCfg.ActiveWorld)
+	}
+
+	// 3. Verify HandleUpdate while server is running waits for Stop(), swaps JAR, and restarts
+	newJar := []byte("new-updated-server-jar-bytes")
+	sum := sha256.Sum256(newJar)
+	newHash := hex.EncodeToString(sum[:])
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/builds/latest"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"id":202,"channel":"STABLE","version":"26.2","downloads":{"server:default":{"name":"paper-26.2-202.jar","url":"http://%s/download","checksums":{"sha256":%q},"size":%d}}}`, r.Host, newHash, len(newJar))
+		case strings.Contains(r.URL.Path, "/download"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(newJar)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	origURL := updater.FillAPIBaseURL
+	updater.FillAPIBaseURL = mockServer.URL
+	defer func() { updater.FillAPIBaseURL = origURL }()
+
+	if err := mcServer.Start(); err != nil {
+		t.Fatalf("Failed starting mock MC server: %v", err)
+	}
+	defer func() {
+		_ = mcServer.Kill()
+		mcServer.WaitForStop(2 * time.Second)
+	}()
+
+	reqUpdate := httptest.NewRequest(http.MethodPost, "/api/updater/apply", bytes.NewReader([]byte(`{"version":"26.2"}`)))
+	wUpdate := httptest.NewRecorder()
+	handler.HandleUpdate(wUpdate, reqUpdate)
+	if wUpdate.Code != http.StatusOK {
+		t.Fatalf("HandleUpdate while running failed: %d %s", wUpdate.Code, wUpdate.Body.String())
+	}
+
+	var updateResp map[string]interface{}
+	_ = json.NewDecoder(wUpdate.Body).Decode(&updateResp)
+	if updateResp["status"] != "updated" {
+		t.Errorf("Expected status 'updated', got %v", updateResp["status"])
+	}
+
+	gotJar, err := os.ReadFile(jarPath)
+	if err != nil || string(gotJar) != string(newJar) {
+		t.Errorf("Expected updated server.jar content %q, got %q (err=%v)", newJar, gotJar, err)
+	}
+	gotBak, err := os.ReadFile(jarPath + ".bak")
+	if err != nil || string(gotBak) != string(oldJar) {
+		t.Errorf("Expected backup server.jar.bak content %q, got %q (err=%v)", oldJar, gotBak, err)
+	}
+	if status := mcServer.GetStatus(); status != minecraft.StatusRunning {
+		t.Errorf("Expected server to be restarted into Running state after update, got %q", status)
+	}
+}
+
+func TestAPIValidationAndErrorBranches(t *testing.T) {
+	tempDir := t.TempDir()
+	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
+	handler := NewServerHandler(mcServer, nil)
+	defer handler.Close()
+
+	// GetConfig when server.properties does not exist yet
+	wGetCfg := httptest.NewRecorder()
+	handler.GetConfig(wGetCfg, httptest.NewRequest(http.MethodGet, "/config", nil))
+	if wGetCfg.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when server.properties missing, got %d", wGetCfg.Code)
+	}
+
+	// PostConfig with invalid JSON and invalid property newline injection
+	wPostBadJSON := httptest.NewRecorder()
+	handler.PostConfig(wPostBadJSON, httptest.NewRequest(http.MethodPost, "/config", bytes.NewReader([]byte(`{bad`))))
+	if wPostBadJSON.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on PostConfig bad JSON, got %d", wPostBadJSON.Code)
+	}
+
+	wPostInjected := httptest.NewRecorder()
+	handler.PostConfig(wPostInjected, httptest.NewRequest(http.MethodPost, "/config", bytes.NewReader([]byte(`{"motd":"ok\nevil=true"}`))))
+	if wPostInjected.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 on PostConfig newline injection, got %d", wPostInjected.Code)
+	}
+
+	// SetScheduler / GetScheduler roundtrip
+	handler.SetScheduler(nil)
+	if handler.GetScheduler() != nil {
+		t.Errorf("Expected nil scheduler after SetScheduler(nil)")
+	}
+
+	// HandleUpdate validation paths (empty body, bad JSON, empty version)
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"empty body", ""},
+		{"invalid json", "{bad"},
+		{"empty version", `{"version":"   "}`},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/updater/apply", bytes.NewReader([]byte(tc.body)))
+		w := httptest.NewRecorder()
+		handler.HandleUpdate(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("HandleUpdate(%s): expected 400, got %d", tc.name, w.Code)
+		}
+	}
+
+	// HandleGetVersions and HandleUpdate error paths against mock Paper API server
+	origURL := updater.FillAPIBaseURL
+	defer func() { updater.FillAPIBaseURL = origURL }()
+
+	mockErrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/builds/latest") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"id":55,"channel":"STABLE","version":"26.2","downloads":{"server:default":{"name":"paper.jar","url":"http://%s/bad-download","checksums":{"sha256":"abc"},"size":10}}}`, r.Host)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockErrServer.Close()
+	updater.FillAPIBaseURL = mockErrServer.URL
+
+	wVerErr := httptest.NewRecorder()
+	handler.HandleGetVersions(wVerErr, httptest.NewRequest(http.MethodGet, "/api/updater/versions", nil))
+	if wVerErr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 on HandleGetVersions failure, got %d", wVerErr.Code)
+	}
+
+	wDlErr := httptest.NewRecorder()
+	handler.HandleUpdate(wDlErr, httptest.NewRequest(http.MethodPost, "/api/updater/apply", bytes.NewReader([]byte(`{"version":"26.2"}`))))
+	if wDlErr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 when DownloadJar fails inside HandleUpdate, got %d", wDlErr.Code)
+	}
+}
+
 

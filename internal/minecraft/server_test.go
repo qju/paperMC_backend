@@ -1054,5 +1054,46 @@ func TestWaitForStop_StderrAndUUIDCacheReset(t *testing.T) {
 	}
 }
 
+func TestStreamLogs_LargeLine(t *testing.T) {
+	origExec := ExecCommandContext
+	defer func() { ExecCommandContext = origExec }()
+
+	ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "head -c 102400 /dev/zero | tr '\\0' 'X'; printf '\\n'; read dummy")
+	}
+
+	tmpDir := t.TempDir()
+	server := NewServer(tmpDir, "server.jar", "2G", nil)
+
+	wantLine := "[MC] " + strings.Repeat("X", 100*1024)
+	largeLineCh := make(chan string, 1)
+	removeListener := server.AddListener(func(line string) {
+		if len(line) >= 100*1024 {
+			select {
+			case largeLineCh <- line:
+			default:
+			}
+		}
+	})
+	defer removeListener()
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() {
+		_ = server.Kill()
+		server.WaitForStop(2 * time.Second)
+	}()
+
+	select {
+	case got := <-largeLineCh:
+		if got != wantLine {
+			t.Errorf("Large log line mismatch: got length %d, want %d", len(got), len(wantLine))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Timed out waiting for 100 KiB log line to be streamed")
+	}
+}
+
 
 

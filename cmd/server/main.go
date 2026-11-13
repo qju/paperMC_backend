@@ -116,7 +116,7 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	sig := <-c
 	fmt.Printf("Receiving Signal [%v]. Shutting down...\n", sig)
-	mcHandler.StopScheduler()
+	mcHandler.Close()
 	if err := mcServer.Stop(); err != nil {
 		log.Printf("Error stopping the server: %v", err)
 	} else if !mcServer.WaitForStop(30 * time.Second) {

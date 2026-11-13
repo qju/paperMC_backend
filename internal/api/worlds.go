@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,15 +32,37 @@ type DeleteWorldRequest struct {
 	WorldName string `json:"world_name"`
 }
 
+func (h *Handler) invalidateActiveWorldCache() {
+	h.activeWorldMu.Lock()
+	h.activeWorldCache = ""
+	h.activeWorldModTime = time.Time{}
+	h.activeWorldMu.Unlock()
+}
+
 func (h *Handler) getActiveWorld() string {
-	props, err := config.LoadProperties(h.mc.WorkDir)
-	if err != nil || props == nil {
+	propsPath := filepath.Join(h.mc.WorkDir, "server.properties")
+	info, err := os.Stat(propsPath)
+	if err != nil {
+		h.invalidateActiveWorldCache()
 		return "world"
 	}
-	active := props["level-name"]
-	if strings.TrimSpace(active) == "" {
-		return "world"
+
+	h.activeWorldMu.Lock()
+	defer h.activeWorldMu.Unlock()
+
+	if h.activeWorldCache != "" && info.ModTime().Equal(h.activeWorldModTime) {
+		return h.activeWorldCache
 	}
+
+	active := "world"
+	if props, err := config.LoadProperties(h.mc.WorkDir); err == nil && props != nil {
+		if lvl := strings.TrimSpace(props["level-name"]); lvl != "" {
+			active = lvl
+		}
+	}
+
+	h.activeWorldCache = active
+	h.activeWorldModTime = info.ModTime()
 	return active
 }
 
@@ -89,6 +113,7 @@ func (h *Handler) applySetActiveWorld(w http.ResponseWriter, r *http.Request, re
 		respondWithError(w, http.StatusInternalServerError, "Failed to update configuration: "+err.Error())
 		return
 	}
+	h.invalidateActiveWorldCache()
 
 	action := "world.switch"
 	if strings.Contains(r.URL.Path, "create") {
@@ -110,16 +135,14 @@ func (h *Handler) applySetActiveWorld(w http.ResponseWriter, r *http.Request, re
 
 		// Await server shutdown with a 30s timeout guard before restart
 		go func() {
-			deadline := time.Now().Add(30 * time.Second)
-			for {
-				if h.mc.GetStatus() == minecraft.StatusStopped {
-					break
-				}
-				if time.Now().After(deadline) {
-					h.mc.Broadcast("[System] Timed out waiting for server to stop during world switch.")
-					return
-				}
-				time.Sleep(500 * time.Millisecond)
+			if !h.mc.WaitForStop(30 * time.Second) {
+				h.mc.Broadcast("[System] Timed out waiting for server to stop during world switch.")
+				return
+			}
+			select {
+			case <-h.stopCh:
+				return
+			default:
 			}
 			h.mc.Broadcast("[System] Restarting server under world '" + newWorld + "'...")
 			_ = h.mc.Start()

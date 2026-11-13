@@ -360,81 +360,83 @@ func (s *Server) AddProfilerListener(listener func(*database.ProfilerReport)) {
 }
 
 func (s *Server) GetVitals() Vitals {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	status := s.status
+	isReady := s.isReady.Load()
+	ram := s.RAM
+	workDir := s.WorkDir
+	startTime := s.startTime
+	proc := s.proc
+	tpsVal := s.currentTPS
+	msptVal := s.currentMSPT
 
 	onlineList := make([]Player, 0, len(s.OnlinePlayers))
 	for _, p := range s.OnlinePlayers {
 		onlineList = append(onlineList, p)
 	}
 
-	status := s.status
-	if status == StatusRunning && !s.isReady.Load() {
-		status = StatusStarting
+	historySnapshot := make([]MetricPoint, len(s.history))
+	copy(historySnapshot, s.history)
+	s.mu.RUnlock()
+
+	displayStatus := status
+	if displayStatus == StatusRunning && !isReady {
+		displayStatus = StatusStarting
 	}
 
 	vitals := Vitals{
-		Status:      status,
-		TotalMemory: s.RAM,
+		Status:      displayStatus,
+		TotalMemory: ram,
 		PlayerCount: len(onlineList),
 		PlayerList:  onlineList,
 		TPS:         0,
 		MSPT:        0,
-		History:     make([]MetricPoint, len(s.history)),
+		History:     historySnapshot,
 	}
-	copy(vitals.History, s.history)
 
-	// Collect host CPU metrics (Per-Core & Overall)
+	// Collect host CPU & disk metrics outside s.mu to avoid blocking log and lifecycle calls.
 	if cores, err := cpu.Percent(0, true); err == nil {
 		vitals.CPUCores = cores
 	}
 	if sysCPU, err := cpu.Percent(0, false); err == nil && len(sysCPU) > 0 {
 		vitals.SystemCPU = sysCPU[0]
 	}
-
-	// Collect disk metrics
-	if usage, err := disk.Usage(s.WorkDir); err == nil {
+	if usage, err := disk.Usage(workDir); err == nil {
 		vitals.DiskFree = usage.Free
 		vitals.DiskTotal = usage.Total
 		vitals.DiskUsedPct = usage.UsedPercent
 	}
 
-	// If Server is not running, return host and disk status (0 process CPU/RAM)
-	if s.status != StatusRunning {
+	// If Server is not running, return host and disk status (0 process CPU/RAM).
+	if status != StatusRunning {
 		return vitals
 	}
 
-	// Process Uptime
-	if !s.startTime.IsZero() {
-		vitals.UptimeSeconds = int64(time.Since(s.startTime).Seconds())
+	if !startTime.IsZero() {
+		vitals.UptimeSeconds = int64(time.Since(startTime).Seconds())
 	}
 
-	// Process CPU % and Memory
-	if s.proc != nil {
-		if cpuPercent, err := s.proc.Percent(0); err == nil {
+	if proc != nil {
+		if cpuPercent, err := proc.Percent(0); err == nil {
 			vitals.CPU = cpuPercent
 		}
-		if mem, err := s.proc.MemoryInfo(); err == nil {
+		if mem, err := proc.MemoryInfo(); err == nil {
 			vitals.RAM = mem.RSS
 		}
-		if numThreads, err := s.proc.NumThreads(); err == nil {
+		if numThreads, err := proc.NumThreads(); err == nil {
 			vitals.Threads = numThreads
 		}
 	}
 
-	// Dynamic Minecraft TPS & MSPT when running
-	tpsVal := s.currentTPS
 	if tpsVal <= 0 {
 		tpsVal = 20.0
 	}
-	msptVal := s.currentMSPT
 	if msptVal <= 0 {
 		msptVal = 20.0
 	}
 	vitals.TPS = math.Round(tpsVal*100) / 100
 	vitals.MSPT = math.Round(msptVal*100) / 100
 
-	// Append data point to history ring buffer (capped at 30 entries)
 	point := MetricPoint{
 		Timestamp: time.Now().Unix(),
 		CPU:       vitals.CPU,
@@ -442,19 +444,24 @@ func (s *Server) GetVitals() Vitals {
 		TPS:       vitals.TPS,
 		MSPT:      vitals.MSPT,
 	}
-	s.history = append(s.history, point)
-	if len(s.history) > 30 {
-		s.history = s.history[1:]
-	}
 
+	s.mu.Lock()
+	if len(s.history) >= 30 {
+		copy(s.history, s.history[1:])
+		s.history[len(s.history)-1] = point
+	} else {
+		s.history = append(s.history, point)
+	}
 	vitals.History = make([]MetricPoint, len(s.history))
 	copy(vitals.History, s.history)
+	s.mu.Unlock()
 
 	return vitals
 }
 
 func (s *Server) StreamLogs() {
 	scanner := bufio.NewScanner(s.stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
 
 	for scanner.Scan() {
 		text := scanner.Text()
@@ -483,14 +490,14 @@ func (s *Server) StreamLogs() {
 			}
 		}
 
-		// Check for players joining
+		// Check for players joining (synchronous to preserve ordering with uuidCache)
 		if strings.Contains(text, " joined the game") {
-			go s.handleSessionChange(text, true)
+			s.handleSessionChange(text, true)
 		}
 
 		// Check for players leaving
 		if strings.Contains(text, " left the game") {
-			go s.handleSessionChange(text, false)
+			s.handleSessionChange(text, false)
 		}
 
 		// Check for players not on WhiteList trying to connect
@@ -786,9 +793,11 @@ func (s *Server) AddListener(listener func(string)) func() {
 func (s *Server) Broadcast(msg string) {
 	// Add message to the LogHistory and copy listeners under lock
 	s.mu.Lock()
-	s.LogHistory = append(s.LogHistory, msg)
-	if len(s.LogHistory) > 100 {
-		s.LogHistory = s.LogHistory[1:]
+	if len(s.LogHistory) >= 100 {
+		copy(s.LogHistory, s.LogHistory[1:])
+		s.LogHistory[len(s.LogHistory)-1] = msg
+	} else {
+		s.LogHistory = append(s.LogHistory, msg)
 	}
 	currentListeners := make([]func(string), 0, len(s.listeners))
 	for _, listener := range s.listeners {
@@ -891,7 +900,7 @@ func NewServer(workDir string, jarFile string, ram string, store database.Store)
 		JarFile:       jarFile,
 		RAM:           ram,
 		LogChan:       make(chan string),
-		LogHistory:    make([]string, 0),
+		LogHistory:    make([]string, 0, 100),
 		history:       make([]MetricPoint, 0, 30),
 		listeners:     make(map[int]func(string)),
 		status:        StatusStopped,

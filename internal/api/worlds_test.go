@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"paperMC_backend/internal/config"
 	"paperMC_backend/internal/minecraft"
@@ -212,8 +213,13 @@ func TestSetActiveWorldRunningServer(t *testing.T) {
 	origExec := minecraft.ExecCommandContext
 	defer func() { minecraft.ExecCommandContext = origExec }()
 
+	startedCh := make(chan struct{}, 2)
 	minecraft.ExecCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "cat")
+		select {
+		case startedCh <- struct{}{}:
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `while IFS= read -r line; do [ "$line" = "stop" ] && exit 0; done`)
 	}
 
 	tempDir := t.TempDir()
@@ -221,12 +227,17 @@ func TestSetActiveWorldRunningServer(t *testing.T) {
 
 	mcServer := minecraft.NewServer(tempDir, "server.jar", "2G", nil)
 	handler := NewServerHandler(mcServer, nil)
+	defer func() {
+		handler.Close()
+		_ = mcServer.Kill()
+		mcServer.WaitForStop(2 * time.Second)
+	}()
 
 	// Start server
 	if err := mcServer.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
-	defer mcServer.Kill()
+	<-startedCh
 
 	// Call HandleSetActiveWorld while running
 	req := httptest.NewRequest(http.MethodPost, "/api/worlds/active", bytes.NewReader([]byte(`{"world_name":"switched_running_world"}`)))
@@ -240,6 +251,14 @@ func TestSetActiveWorldRunningServer(t *testing.T) {
 	props, err := config.LoadProperties(tempDir)
 	if err != nil || props["level-name"] != "switched_running_world" {
 		t.Errorf("Expected level-name to be switched_running_world, got: %v, %v", err, props["level-name"])
+	}
+
+	// Wait for the asynchronous world-switch restart to invoke ExecCommandContext before cleanup
+	// restores the global hook so there is no race on cleanup.
+	select {
+	case <-startedCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timed out waiting for async restart after world switch")
 	}
 }
 

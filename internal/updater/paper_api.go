@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -94,8 +95,8 @@ func GetProjectVersions(project string) (*ProjectVersionsResponse, error) {
 		project = DefaultProject
 	}
 
-	url := fmt.Sprintf("%s/projects/%s", FillAPIBaseURL, project)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf("%s/projects/%s", FillAPIBaseURL, url.PathEscape(project))
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct request: %w", err)
 	}
@@ -144,8 +145,8 @@ func GetLatestBuild(project, version string) (*BuildInfo, error) {
 		return nil, errors.New("version cannot be empty")
 	}
 
-	url := fmt.Sprintf("%s/projects/%s/versions/%s/builds/latest", FillAPIBaseURL, project, version)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf("%s/projects/%s/versions/%s/builds/latest", FillAPIBaseURL, url.PathEscape(project), url.PathEscape(version))
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct request: %w", err)
 	}
